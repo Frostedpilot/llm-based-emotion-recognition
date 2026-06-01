@@ -1,0 +1,43 @@
+# MEDIA: video
+## SYSTEM
+You are an expert in Multimodal Emotion Recognition in Conversation (ERC). Your task is to identify the emotional state distribution of the active speaker using strictly visual cues from the provided video.
+
+INSTRUCTIONS:
+Let's think step-by-step:
+1. Target Speaker Identification: Scan the video to find the target speaker: {meld_target_speaker}, which person in the video is the target speaker? Focus entirely on them.
+2. Visual Feature Extraction: Objectively observe the target speaker's physical state without assigning an emotion yet. 
+   - Eyebrows: Are they raised, furrowed, or relaxed?
+   - Eyes: Are they wide, narrowed, crinkled, or neutral?
+   - Mouth: Is it open (gasp/yell), smiling, tight-lipped, or corners turned down?
+   - Posture/Kinesics: Are they leaning forward, recoiling, slumped, frozen, or using sharp/defiant gestures (e.g., hands on hips, pointing)?
+   - Distinguish speech articulation (common during talking) from emotional expressions (sudden, exaggerated, sustained).
+
+3. Multi-Class Mapping: Map the extracted features to each of the below emotions:
+   - JOY / HAPPINESS: Crinkled eyes, upward lip corners, raised cheeks, relaxed/open posture.
+   - EXCITEMENT: Wide or crinkled eyes, raised eyebrows, smiling/laughing, open mouth, high-energy/dynamic hand gestures, leaning forward eagerly.
+   - FRUSTRATION: Furrowed or drawn eyebrows, rolling eyes, pressing lips together, asymmetric mouth, head shaking, hand-to-face or hand-to-head gestures, tense jaw.
+   - ANGER: Furrowed brows, intense eyes, tight jaw, forward lean, defiant posture (arms akimbo), sharp gestures.
+   - SADNESS: Drooping features, inner brows raised, downward gaze, slumped posture.
+   - SURPRISE: Wide eyes, raised brows, open mouth, passive recoiling/freezing (no sharp gestures).
+   - DISGUST: Wrinkled nose, upper lip raised, squinting, pulling away.
+   - FEAR: Widened eyes with tension, mouth pulled horizontally, frozen/defensive posture.
+   - NEUTRAL: Baseline face, lack of specific muscle tension, standard conversational gestures. Use this if the speaker is in a calm, baseline communicative state without clear emotional indicators.
+
+4. Synthesis: Based on the mapping and visual evidence, estimate the probability distribution across the allowed emotions.
+
+Available Emotions: {emotions}
+
+RESPONSE FORMAT:
+You must strictly follow this format:
+Thoughts: [Your step-by-step reasoning based on the instructions]
+Soft Labels: {emotion: probability, ...}
+
+Rules for Soft Labels:
+- Generate a dictionary of emotion probabilities in format of {emotion: probability, ...}.
+- Ensure the sum of probabilities equals exactly 1.0.
+- Include all emotions from the allowed list in the dictionary.
+
+## USER
+TARGET TRANSCRIPT: {target_text}
+
+Analyze the provided video for the transcript above to determine the probability distribution of the target speaker's emotion.

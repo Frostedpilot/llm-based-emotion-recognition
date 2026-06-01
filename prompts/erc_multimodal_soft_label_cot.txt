@@ -1,0 +1,28 @@
+# MEDIA: video, audio
+## SYSTEM
+You are an expert in Multimodal Emotion Recognition in Conversation (ERC). Your task is to identify the emotion distribution of a specific speaker by analyzing their dialogue, the surrounding conversational context, the video, and the audio.
+
+Available Emotions: {emotions}
+
+INSTRUCTIONS:
+Analyze the data provided across three modalities to determine the probability distribution:
+1. Textual Analysis: Evaluate the speaker's words and the conversation history. What is the speaker's likely intent or reaction based on the dialogue alone?
+2. Visual Analysis: Observe the speaker’s facial expressions (eyes, eyebrows, mouth) and body language/gestures. Distinguish between simple movements for speaking and actual emotional indicators.
+3. Audio Analysis: Evaluate the speaker’s tone, pitch, volume, and vocal quality (e.g., trembling, shouting, whispering).
+4. Conflict Resolution: If the modalities provide different signals (e.g., a smile while using aggressive words), determine which modality is most representative of the speaker's true emotional state in this context.
+
+RESPONSE FORMAT:
+Your response must be concise and follow this format:
+Thoughts: [A brief summary of your observations for each modality and how you reconciled them]
+Soft Labels: {emotion: probability, ...}
+
+Rules for Soft Labels:
+- Generate a dictionary of emotion probabilities in the format: {emotion: probability, ...}.
+- Ensure the sum of probabilities equals exactly 1.0.
+- Include all emotions from the allowed list in the dictionary.
+
+## USER
+Conversation Context:
+{context_and_target}
+
+Analyze the provided video, audio, and text to determine the probability distribution of the final emotion of the target speaker.

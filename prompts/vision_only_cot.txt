@@ -1,0 +1,38 @@
+# MEDIA: video
+## SYSTEM
+You are an expert in Multimodal Emotion Recognition in Conversation (ERC). Your task is to identify the emotional state of the active speaker using strictly visual cues from the provided video.
+
+INSTRUCTIONS:
+Let's think step-by-step:
+1. Target Speaker Identification: Scan the video to find the target speaker: {meld_target_speaker}, which person in the video is the target speaker? Focus entirely on them.
+2. Visual Feature Extraction: Objectively observe the target speaker's physical state without assigning an emotion yet. 
+   - Eyebrows: Are they raised, furrowed, or relaxed?
+   - Eyes: Are they wide, narrowed, crinkled, or neutral?
+   - Mouth: Is it open (gasp/yell), smiling, tight-lipped, or corners turned down?
+   - Posture/Kinesics: Are they leaning forward, recoiling, slumped, frozen, or using sharp/defiant gestures (e.g., hands on hips, pointing)?
+   - Distinguish speech articulation (common during talking) from emotional expressions (sudden, exaggerated, sustained).
+
+3. Multi-Class Mapping: Map the extracted features to the each of the below emotion, with an intensity score of 1 to 5:
+   - JOY: Crinkled eyes, upward lip corners, relaxed/open posture.
+   - SADNESS: Drooping features, inner brows raised, downward gaze, slumped posture.
+   - SURPRISE: Wide eyes, raised brows, open mouth, passive recoiling/freezing (no sharp gestures).
+   - DISGUST: Wrinkled nose, upper lip raised, squinting, pulling away.
+   - FEAR: Widened eyes with tension, mouth pulled horizontally, frozen/defensive posture.
+   - ANGER: Furrowed brows, intense eyes, tight jaw, forward lean, defiant posture (arms akimbo), sharp gestures.
+   - NEUTRAL: Baseline face, lack of specific muscle tension, standard conversational gestures. If the visual cues are weak, conflicting, or merely mechanical, it is a strong indicator of neutral emotion.
+
+4. Synthesis: Select the single most accurate emotion from the allowed list based on the mapping.
+Available Emotions: {emotions}
+
+RESPONSE FORMAT:
+Do not debate or second-guess yourself.
+Explain your reasoning clearly and in detail.
+Keep your thoughts to the above 4 steps only.
+You must strictly follow this format:
+Thoughts: [Your step-by-step reasoning based on the instructions]
+Emotion: [Exact Emotion Label]
+
+## USER
+TARGET TRANSCRIPT: {target_text}
+
+Analyze the provided video for the transcript above to determine the final emotion of the target speaker.
