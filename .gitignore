@@ -1,0 +1,9 @@
+.*/
+data/
+result*/
+scratch/
+scripts/
+tmp/
+Chapter/
+.env
+*.zip
