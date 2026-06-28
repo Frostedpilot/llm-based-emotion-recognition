@@ -6,11 +6,12 @@ This repository contains a framework for evaluating and experimenting with Large
 
 ## 🚀 Overview
 
-The framework is organized around three main CLI utilities located in the root directory:
+The framework is organized around three main CLI utilities and an interactive Web Dashboard:
 
 1. **`probe.py`**: A debugging tool to test the LLM's response and behavior on a *single utterance* within a selected conversation. It prints the full rendered prompt sent to the model and streams the raw and structured responses in real-time.
 2. **`benchmark.py`**: An automated benchmarking tool to run systematic evaluations across a dataset (or subsets of conversations). It provides a real-time progress bar, live accuracy and $F_1$-weighted metrics, and resume support.
 3. **`calculate_metrics.py`**: A stats post-processor that allows you to recalculate metrics, generate detailed classification reports (precision, recall, F1 per class), slice results (e.g., analyze the first $N$ entries), and compare overall performance.
+4. **`backend/server.py`**: A FastAPI-based web server hosting the **Thesis Demonstration Dashboard**, offering an interactive interface for model execution, video/audio media clips, and multi-agent live streaming.
 
 ---
 
@@ -151,6 +152,31 @@ The output report displays:
 * **Side-by-Side Comparison Table**: If `--limit` is specified, it prints a clean ASCII comparison showing metrics for the limited subset alongside the overall total (including Sample Size, Correct Classifications, Accuracy, Weighted $F_1$, Macro $F_1$, and Avg JS-Divergence).
 * **Per-Class Breakdown**: Detailed classification reports showing precision, recall, f1-score, and support for each emotion label (e.g., `joy`, `anger`, `sadness`, `neutral`, etc.).
 
+### 4. `backend/server.py` — Web-Based Research Dashboard
+The framework includes an interactive Web Dashboard to visualize conversations, play video/audio media clips, configure hyperparameters, and track multi-agent streaming pipelines.
+
+#### How to Run
+Start the web server locally:
+```bash
+python backend/server.py
+```
+Or via `uv`:
+```bash
+uv run python backend/server.py
+```
+Open your browser and navigate to: **[http://127.0.0.1:8283](http://127.0.0.1:8283)**
+
+#### Features
+* **Playground & Config Tab**:
+  * Select dataset (e.g. MELD, IEMOCAP), dialogue ID, and targeted conversation turn.
+  * Listen to or watch the associated raw audio/video media clips dynamically.
+  * Tune model parameters: Modality (Mono T, Mono V, Mono A, Mono TVA, Multi-Agent Resolver), Label Mode (Hard/Soft), Provider, Model ID, Context Window size, Temperature, Frame count, and Thinking tags.
+  * Review Verdict results, Jensen-Shannon Divergence, and live Chart.js probability comparison distributions.
+* **Real-time Stream Console Tab**:
+  * When executing a probe, the UI automatically transitions here.
+  * Each specialized agent (`TextAgent`, `VisionAgent`, `AcousticAgent`, `ResolverAgent`) streams its reasoning path and structured thoughts under dedicated mini-tabs.
+  * Sub-tabs allow you to toggle between **Prompt Context** and the **Streaming Response** in real-time, locked to non-resizeable, high-readability Times New Roman windows.
+
 ---
 
 ## ⚙️ Core Configuration Flags
@@ -160,14 +186,19 @@ The CLI tools share several foundational configuration parameters that tune pred
 | Flag | Default | Description |
 | :--- | :---: | :--- |
 | `-d`, `--dataset` | *None* | Short alias (e.g., `meld_dev`, `iemocap`) or full path to the processed JSON dataset. |
-| `-m`, `--model` | *Preset* | The model identifier. Defaults to `qwen3.5:4b` locally and `qwen/qwen3.6-plus:free` on OpenRouter. |
-| `--provider` | `local` | `local` (Ollama connection on `127.0.0.1:11434`) or `openrouter` (OpenRouter API). |
+| `-m`, `--model` | *Preset* | The model identifier. Defaults to `google/gemini-2.5-flash-lite` on OpenRouter and `qwen3.5:4b` locally. |
+| `--provider` | `openrouter` | `local` (Ollama connection on `127.0.0.1:11434`) or `openrouter` (OpenRouter API). |
 | `--window` | `5` | Context window size. Includes up to $N$ prior conversational turns as history in the prompt. |
 | `--temperature`| `0.0` | Sampling temperature. `0.0` ensures greedy decoding for high reproducibility. |
 | `--no-think` | *False* | Disables Qwen/DeepSeek chain-of-thought tags (Ollama `/no_think`). |
 | `--soft-label` | *False* | Requests probability distribution outputs and calculates JS-Divergence against ground truth. |
 | `--vision` | *False* | Extracts visual features (I-frames) from raw video paths for multi-modal model analysis. |
 | `--audio` | *False* | Extracts acoustic features from raw audio paths for multi-modal model analysis. |
+| `--agent` | *False* | Enables multi-agent mode internally using native specialized specialty agents. |
+| `--workflow` | *None* | Agentic workflow to run (e.g., `tva_theory`, `tva_theory_soft`). |
+| `--text-results` | *None* | Path to pre-computed text modality results to skip text LLM queries. |
+| `--vision-results`| *None* | Path to pre-computed vision modality results to skip vision LLM queries. |
+| `--audio-results` | *None* | Path to pre-computed audio modality results to skip audio LLM queries. |
 
 ---
 
