@@ -73,141 +73,189 @@
                 </div>
             </header>
             
-            <!-- Mid grid: Selected utterance & Model Configuration -->
-            <div class="dashboard-grid">
-                
-                <!-- Card: Selected Utterance & Media -->
-                <div class="card glass item-details-card">
-                    <div class="card-header">
-                        <h2>Utterance Details</h2>
-                        <span class="badge" id="source-badge">MELD</span>
+            <!-- Main Content Tabs -->
+            <div class="main-tabs">
+                <button class="main-tab-btn active" data-tab="tab-dashboard">📊 Playground & Config</button>
+                <button class="main-tab-btn" data-tab="tab-console">🖥️ Real-time Stream Console</button>
+            </div>
+            
+            <!-- Tab 1: Playground & Config & Evaluation -->
+            <div id="tab-dashboard" class="tab-content active">
+                <div class="dashboard-grid">
+                    
+                    <!-- Card: Selected Utterance & Media -->
+                    <div class="card glass item-details-card">
+                        <div class="card-header">
+                            <h2>Utterance Details</h2>
+                            <span class="badge" id="source-badge">MELD</span>
+                        </div>
+                        
+                        <div class="card-body">
+                            <div class="utterance-bubble">
+                                <span class="speaker-label" id="utt-speaker">Speaker: -</span>
+                                <blockquote id="utt-text">Please select a dataset, dialogue, and utterance from the sidebar.</blockquote>
+                            </div>
+                            
+                            <div class="ground-truth-strip">
+                                <span>Ground Truth Label:</span>
+                                <span class="emotion-badge-gt" id="utt-gt">N/A</span>
+                            </div>
+                            
+                            <div class="media-container" id="media-wrapper">
+                                <h3>Associated Media Clip</h3>
+                                <div class="player-container">
+                                    <!-- Dynamic Player HTML generated here -->
+                                    <div class="media-placeholder">No media loaded</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="card-body">
-                        <div class="utterance-bubble">
-                            <span class="speaker-label" id="utt-speaker">Speaker: -</span>
-                            <blockquote id="utt-text">Please select a dataset, dialogue, and utterance from the sidebar.</blockquote>
+                    <!-- Card: Configurations -->
+                    <div class="card glass config-card">
+                        <div class="card-header">
+                            <h2>Model Configurations</h2>
                         </div>
-                        
-                        <div class="ground-truth-strip">
-                            <span>Ground Truth Label:</span>
-                            <span class="emotion-badge-gt" id="utt-gt">N/A</span>
-                        </div>
-                        
-                        <div class="media-container" id="media-wrapper">
-                            <h3>Associated Media Clip</h3>
-                            <div class="player-container">
-                                <!-- Dynamic Player HTML generated here -->
-                                <div class="media-placeholder">No media loaded</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Card: Configurations -->
-                <div class="card glass config-card">
-                    <div class="card-header">
-                        <h2>Model Configurations</h2>
-                    </div>
-                    <div class="card-body config-form">
-                        
-                        <div class="config-row">
-                            <div class="config-col">
-                                <label for="model-preset-select">Model Modality</label>
-                                <div class="select-wrapper">
-                                    <select id="model-preset-select">
-                                        <option value="mono_t">Mono T (Text modality)</option>
-                                        <option value="mono_v">Mono V (Vision modality)</option>
-                                        <option value="mono_a">Mono A (Acoustic modality)</option>
-                                        <option value="mono_tva">Mono TVA (Fusion modality)</option>
-                                        <option value="agentic" selected>Agentic Resolver (Multi-Agent)</option>
-                                    </select>
-                                </div>
-                            </div>
+                        <div class="card-body config-form">
                             
-                            <div class="config-col">
-                                <label>Label Representation</label>
-                                <div class="radio-group">
-                                    <label class="radio-label">
-                                        <input type="radio" name="label_mode" value="hard">
-                                        <span>Hard Label</span>
-                                    </label>
-                                    <label class="radio-label">
-                                        <input type="radio" name="label_mode" value="soft" checked>
-                                        <span>Soft Label</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="config-row">
-                            <div class="config-col">
-                                <label for="provider-select">Inference Provider</label>
-                                <div class="select-wrapper">
-                                    <select id="provider-select">
-                                        <option value="openrouter" selected>OpenRouter (API)</option>
-                                        <option value="local">Ollama (Local)</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <div class="config-col">
-                                <label for="model-id-input">Model ID</label>
-                                <input type="text" id="model-id-input" value="google/gemini-2.5-flash-lite" placeholder="e.g. qwen3.5:4b">
-                                <div class="preset-hints">
-                                    Presel: 
-                                    <span class="hint-tag" onclick="setModelId('google/gemini-2.5-flash-lite')">Gemini 2.5 L</span> |
-                                    <span class="hint-tag" onclick="setModelId('google/gemini-3.1-flash-lite')">Gemini 3.1 L</span> |
-                                    <span class="hint-tag" onclick="setModelId('qwen/qwen3.6-plus:free')">Qwen 3.6</span> |
-                                    <span class="hint-tag" onclick="setModelId('qwen3.5:4b')">qwen3.5:4b (Local)</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="collapsible-section">
-                            <button type="button" class="collapse-trigger" onclick="toggleAdvancedConfig()">
-                                <span>Advanced Parameters</span>
-                                <span class="arrow">▼</span>
-                            </button>
-                            <div class="collapse-content" id="advanced-config-panel">
-                                <div class="config-row">
-                                    <div class="config-col">
-                                        <label for="window-slider">Context Window: <span id="window-val">5</span> turns</label>
-                                        <input type="range" id="window-slider" min="1" max="10" value="5">
-                                    </div>
-                                    <div class="config-col">
-                                        <label for="temp-slider">Temperature: <span id="temp-val">0.0</span></label>
-                                        <input type="range" id="temp-slider" min="0" max="1" step="0.1" value="0.0">
+                            <div class="config-row">
+                                <div class="config-col">
+                                    <label for="model-preset-select">Model Modality</label>
+                                    <div class="select-wrapper">
+                                        <select id="model-preset-select">
+                                            <option value="mono_t">Mono T (Text modality)</option>
+                                            <option value="mono_v">Mono V (Vision modality)</option>
+                                            <option value="mono_a">Mono A (Acoustic modality)</option>
+                                            <option value="mono_tva">Mono TVA (Fusion modality)</option>
+                                            <option value="agentic" selected>Agentic Resolver (Multi-Agent)</option>
+                                        </select>
                                     </div>
                                 </div>
-                                <div class="config-row">
-                                    <div class="config-col">
-                                        <label for="frames-input">Vision Frame Count</label>
-                                        <input type="number" id="frames-input" min="1" max="10" value="3">
-                                    </div>
-                                    <div class="config-col checkbox-container">
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" id="disable-thinking-check" checked>
-                                            <span>Disable Thinking Tokens</span>
+                                
+                                <div class="config-col">
+                                    <label>Label Representation</label>
+                                    <div class="radio-group">
+                                        <label class="radio-label">
+                                            <input type="radio" name="label_mode" value="hard">
+                                            <span>Hard Label</span>
+                                        </label>
+                                        <label class="radio-label">
+                                            <input type="radio" name="label_mode" value="soft" checked>
+                                            <span>Soft Label</span>
                                         </label>
                                     </div>
                                 </div>
                             </div>
+                            
+                            <div class="config-row">
+                                <div class="config-col">
+                                    <label for="provider-select">Inference Provider</label>
+                                    <div class="select-wrapper">
+                                        <select id="provider-select">
+                                            <option value="openrouter" selected>OpenRouter (API)</option>
+                                            <option value="local">Ollama (Local)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="config-col">
+                                    <label for="model-id-input">Model ID</label>
+                                    <input type="text" id="model-id-input" value="google/gemini-2.5-flash-lite" placeholder="e.g. qwen3.5:4b">
+                                    <div class="preset-hints">
+                                        Presel: 
+                                        <span class="hint-tag" onclick="setModelId('google/gemini-2.5-flash-lite')">Gemini 2.5 L</span> |
+                                        <span class="hint-tag" onclick="setModelId('google/gemini-3.1-flash-lite')">Gemini 3.1 L</span> |
+                                        <span class="hint-tag" onclick="setModelId('qwen/qwen3.6-plus:free')">Qwen 3.6</span> |
+                                        <span class="hint-tag" onclick="setModelId('qwen3.5:4b')">qwen3.5:4b (Local)</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="collapsible-section">
+                                <button type="button" class="collapse-trigger" onclick="toggleAdvancedConfig()">
+                                    <span>Advanced Parameters</span>
+                                    <span class="arrow">▼</span>
+                                </button>
+                                <div class="collapse-content" id="advanced-config-panel">
+                                    <div class="config-row">
+                                        <div class="config-col">
+                                            <label for="window-slider">Context Window: <span id="window-val">5</span> turns</label>
+                                            <input type="range" id="window-slider" min="1" max="10" value="5">
+                                        </div>
+                                        <div class="config-col">
+                                            <label for="temp-slider">Temperature: <span id="temp-val">0.0</span></label>
+                                            <input type="range" id="temp-slider" min="0" max="1" step="0.1" value="0.0">
+                                        </div>
+                                    </div>
+                                    <div class="config-row">
+                                        <div class="config-col">
+                                            <label for="frames-input">Vision Frame Count</label>
+                                            <input type="number" id="frames-input" min="1" max="10" value="3">
+                                        </div>
+                                        <div class="config-col checkbox-container">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="disable-thinking-check" checked>
+                                                <span>Disable Thinking Tokens</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button class="btn btn-primary btn-block glow-btn" id="run-btn">
+                                <span class="btn-icon">▶</span>
+                                <span>Run Thesis Probe</span>
+                            </button>
                         </div>
-                        
-                        <button class="btn btn-primary btn-block glow-btn" id="run-btn">
-                            <span class="btn-icon">▶</span>
-                            <span>Run Thesis Probe</span>
-                        </button>
+                    </div>
+                </div>
+                
+                <!-- Metrics and evaluation full-width card -->
+                <div class="full-width-grid">
+                    <div class="card glass metrics-card">
+                        <div class="card-header">
+                            <h2>Analytical Evaluation</h2>
+                        </div>
+                        <div class="card-body metrics-body">
+                            <div class="verdict-row">
+                                <div class="verdict-box">
+                                    <span class="v-label">Ground Truth</span>
+                                    <span class="v-val badge-gt-big" id="eval-gt">-</span>
+                                </div>
+                                <div class="verdict-match" id="eval-match-indicator">
+                                    <span class="match-icon-placeholder">-</span>
+                                </div>
+                                <div class="verdict-box">
+                                    <span class="v-label">Model Prediction</span>
+                                    <span class="v-val badge-pred-big" id="eval-pred">-</span>
+                                </div>
+                            </div>
+                            
+                            <div class="metric-stats">
+                                <div class="metric-badge">
+                                    <span class="m-title">Verdict</span>
+                                    <span class="m-val" id="eval-status-text">No Run</span>
+                                </div>
+                                <div class="metric-badge">
+                                    <span class="m-title">JS-Divergence</span>
+                                    <span class="m-val" id="eval-jsd">-</span>
+                                </div>
+                            </div>
+                            
+                            <div class="chart-container" id="chart-wrapper">
+                                <h3>Emotion Comparison Chart</h3>
+                                <div style="position: relative; height: 180px; width: 100%;">
+                                    <canvas id="distribution-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Bottom: Output Stream Consoles & Evaluator metrics -->
-            <div class="dashboard-grid bottom-grid">
-                
-                <!-- Output Consoles Card -->
-                <div class="card glass console-card">
+            <!-- Tab 2: Fullscreen Console Pane -->
+            <div id="tab-console" class="tab-content hidden">
+                <div class="card glass console-card-fullscreen">
                     <div class="card-header">
                         <h2>Real-time Stream Console</h2>
                         <div class="console-actions">
@@ -215,84 +263,14 @@
                         </div>
                     </div>
                     <div class="card-body console-body">
-                        
-                        <!-- Multi-Agent step-by-step progress visualizer -->
-                        <div id="agent-visualizer" class="agent-grid hidden">
-                            <!-- Dynamic agent console boxes are injected here -->
+                        <!-- Agent tab bar list -->
+                        <div class="agent-tabs-bar" id="agent-tabs-bar">
+                            <!-- Populated dynamically: agent-tab-btn -->
                         </div>
-                        
-                        <!-- Monolithic simple streaming console -->
-                        <div id="monolithic-console" class="mono-console">
-                            <div class="thinking-block hidden" id="thought-block">
-                                <div class="thinking-header">
-                                    <span class="pulse-dot"></span>
-                                    <span>Model Reasoning Path</span>
-                                </div>
-                                <div class="thinking-text" id="thought-output"></div>
-                            </div>
-                            <div class="response-header">
-                                <span>Model Response</span>
-                            </div>
-                            <div class="response-text" id="model-output">Console ready. Select configurations and click Run.</div>
-                        </div>
-                        
-                        <!-- Prompt Inspector Accordion -->
-                        <div class="prompt-inspector-accordion">
-                            <button type="button" class="prompt-trigger" onclick="togglePromptInspector()">
-                                <span>View Prompt Context Sent to LLM</span>
-                                <span class="arrow">▼</span>
-                            </button>
-                            <div class="prompt-content" id="prompt-inspector-panel">
-                                <div class="prompt-box">
-                                    <div class="prompt-section-header">System Instructions</div>
-                                    <pre id="prompt-system-text">(None generated yet)</pre>
-                                </div>
-                                <div class="prompt-box">
-                                    <div class="prompt-section-header">User Dialogue Payload</div>
-                                    <pre id="prompt-user-text">(None generated yet)</pre>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Metrics and evaluation card -->
-                <div class="card glass metrics-card">
-                    <div class="card-header">
-                        <h2>Analytical Evaluation</h2>
-                    </div>
-                    <div class="card-body metrics-body">
-                        <div class="verdict-row">
-                            <div class="verdict-box">
-                                <span class="v-label">Ground Truth</span>
-                                <span class="v-val badge-gt-big" id="eval-gt">-</span>
-                            </div>
-                            <div class="verdict-match" id="eval-match-indicator">
-                                <!-- Match / Mismatch SVG icon dynamically set -->
-                                <span class="match-icon-placeholder">-</span>
-                            </div>
-                            <div class="verdict-box">
-                                <span class="v-label">Model Prediction</span>
-                                <span class="v-val badge-pred-big" id="eval-pred">-</span>
-                            </div>
-                        </div>
-                        
-                        <div class="metric-stats">
-                            <div class="metric-badge">
-                                <span class="m-title">Verdict</span>
-                                <span class="m-val" id="eval-status-text">No Run</span>
-                            </div>
-                            <div class="metric-badge">
-                                <span class="m-title">JS-Divergence</span>
-                                <span class="m-val" id="eval-jsd">-</span>
-                            </div>
-                        </div>
-                        
-                        <div class="chart-container" id="chart-wrapper">
-                            <h3>Emotion Distribution Comparison</h3>
-                            <div style="position: relative; height: 180px; width: 100%;">
-                                <canvas id="distribution-chart"></canvas>
-                            </div>
+                        <!-- Agent content container -->
+                        <div class="agent-panes-container" id="agent-panes-container">
+                            <!-- Populated dynamically: agent-pane -->
+                            <div class="console-placeholder-msg">Console ready. Select configurations and click Run.</div>
                         </div>
                     </div>
                 </div>

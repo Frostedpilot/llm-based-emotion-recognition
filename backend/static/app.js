@@ -38,16 +38,8 @@ const el = {
     runBtn: document.getElementById('run-btn'),
     
     // Outputs
-    agentVisualizer: document.getElementById('agent-visualizer'),
-    monolithicConsole: document.getElementById('monolithic-console'),
-    thoughtBlock: document.getElementById('thought-block'),
-    thoughtOutput: document.getElementById('thought-output'),
-    modelOutput: document.getElementById('model-output'),
-    
-    // Prompt Inspector
-    promptInspectorAccordion: document.querySelector('.prompt-inspector-accordion'),
-    promptSystemText: document.getElementById('prompt-system-text'),
-    promptUserText: document.getElementById('prompt-user-text'),
+    agentTabsBar: document.getElementById('agent-tabs-bar'),
+    agentPanesContainer: document.getElementById('agent-panes-container'),
     
     // Evaluation
     evalGt: document.getElementById('eval-gt'),
@@ -121,6 +113,18 @@ function setupEventListeners() {
     
     // Execute Button
     el.runBtn.addEventListener('click', runProbe);
+
+    // Main tab switching
+    document.querySelectorAll('.main-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetTab = btn.getAttribute('data-tab');
+            document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(pane => pane.classList.add('hidden'));
+            
+            btn.classList.add('active');
+            document.getElementById(targetTab).classList.remove('hidden');
+        });
+    });
 }
 
 // ── API Functions ────────────────────────────────────────────────────────────
@@ -347,9 +351,6 @@ function toggleAdvancedConfig() {
     wrapper.classList.toggle('open');
 }
 
-function togglePromptInspector() {
-    el.promptInspectorAccordion.classList.toggle('open');
-}
 
 function updateConfigPresets() {
     const modality = el.modelPresetSelect.value;
@@ -450,12 +451,12 @@ async function runProbe() {
     state.streamController = new AbortController();
     
     try {
+        // Auto-switch to the Real-time Stream Console tab
+        const consoleTabBtn = document.querySelector('.main-tab-btn[data-tab="tab-console"]');
+        if (consoleTabBtn) consoleTabBtn.click();
+
         if (isAgentic) {
             // MULTI-AGENT RESOLVER ROUTE
-            el.agentVisualizer.classList.remove('hidden');
-            el.monolithicConsole.classList.add('hidden');
-            
-            // Map workflow
             const workflow = isSoft ? 'tva_theory_soft' : 'tva_theory';
             
             const payload = {
@@ -467,7 +468,8 @@ async function runProbe() {
                 window_size: windowSize,
                 template_name: 'erc_default',
                 workflow: workflow,
-                vision_frames: frames
+                vision_frames: frames,
+                soft_label: isSoft
             };
             
             const resp = await fetch('/agent/chat', {
@@ -481,9 +483,6 @@ async function runProbe() {
             
         } else {
             // SINGLE MODALITY / MONOLITHIC ROUTE
-            el.agentVisualizer.classList.add('hidden');
-            el.monolithicConsole.classList.remove('hidden');
-            
             const payload = {
                 dataset_name: datasetId,
                 dialogue_id: dialogueId,
@@ -512,7 +511,6 @@ async function runProbe() {
     } catch (err) {
         if (err.name !== 'AbortError') {
             console.error(err);
-            el.modelOutput.textContent = `Error: ${err.message}`;
             el.evalStatusText.textContent = 'Execution Error';
         }
     } finally {
@@ -523,6 +521,83 @@ async function runProbe() {
 }
 
 // ── Stream Readers ───────────────────────────────────────────────────────────
+function getOrCreateAgentTab(agentName) {
+    let tab = el.agentTabsBar.querySelector(`.agent-tab-btn[data-agent="${agentName}"]`);
+    let pane = el.agentPanesContainer.querySelector(`.agent-pane[data-agent="${agentName}"]`);
+    
+    if (!tab) {
+        // Clear placeholder message if it exists
+        const placeholder = el.agentPanesContainer.querySelector('.console-placeholder-msg');
+        if (placeholder) placeholder.remove();
+        
+        // Create tab button
+        tab = document.createElement('button');
+        tab.className = 'agent-tab-btn';
+        tab.setAttribute('data-agent', agentName);
+        tab.innerHTML = `<span class="status-dot"></span> <span>${agentName}</span>`;
+        el.agentTabsBar.appendChild(tab);
+        
+        // Create pane
+        pane = document.createElement('div');
+        pane.className = 'agent-pane hidden';
+        pane.setAttribute('data-agent', agentName);
+        pane.innerHTML = `
+            <div class="sub-tabs-bar">
+                <button class="sub-tab-btn active" data-subtab="response">Streaming Response & Thoughts</button>
+                <button class="sub-tab-btn" data-subtab="prompt">Prompt Context Sent to LLM</button>
+            </div>
+            <div class="sub-tab-content" data-subtab="response">
+                <div class="agent-box-response-body"></div>
+            </div>
+            <div class="sub-tab-content hidden" data-subtab="prompt">
+                <pre class="agent-box-prompt-body">Loading prompt...</pre>
+            </div>
+        `;
+        el.agentPanesContainer.appendChild(pane);
+        
+        // Bind sub-tab click events
+        pane.querySelectorAll('.sub-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const subtabVal = btn.getAttribute('data-subtab');
+                pane.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.remove('active'));
+                pane.querySelectorAll('.sub-tab-content').forEach(c => c.classList.add('hidden'));
+                
+                btn.classList.add('active');
+                pane.querySelector(`.sub-tab-content[data-subtab="${subtabVal}"]`).classList.remove('hidden');
+            });
+        });
+        
+        // Bind click event to tab button
+        tab.addEventListener('click', () => {
+            selectAgentTab(agentName);
+        });
+        
+        // If this is the first tab, activate it
+        if (el.agentTabsBar.querySelectorAll('.agent-tab-btn').length === 1) {
+            selectAgentTab(agentName);
+        }
+    }
+    
+    return {
+        tab: tab,
+        pane: pane,
+        promptBody: pane.querySelector('.agent-box-prompt-body'),
+        responseBody: pane.querySelector('.agent-box-response-body')
+    };
+}
+
+function selectAgentTab(agentName) {
+    // Deactivate all agent tabs and panes
+    el.agentTabsBar.querySelectorAll('.agent-tab-btn').forEach(btn => btn.classList.remove('active'));
+    el.agentPanesContainer.querySelectorAll('.agent-pane').forEach(p => p.classList.add('hidden'));
+    
+    // Activate target agent tab and pane
+    const tab = el.agentTabsBar.querySelector(`.agent-tab-btn[data-agent="${agentName}"]`);
+    const pane = el.agentPanesContainer.querySelector(`.agent-pane[data-agent="${agentName}"]`);
+    if (tab) tab.classList.add('active');
+    if (pane) pane.classList.remove('hidden');
+}
+
 async function readMonolithicStream(bodyStream) {
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder();
@@ -534,8 +609,11 @@ async function readMonolithicStream(bodyStream) {
     let promptParsed = false;
     let inThinking = false;
     
-    el.modelOutput.textContent = '';
-    el.thoughtOutput.textContent = '';
+    const agentName = 'Monolithic Model';
+    const agentObj = getOrCreateAgentTab(agentName);
+    
+    agentObj.tab.classList.add('active-streaming');
+    agentObj.responseBody.textContent = '';
     
     while (true) {
         const { done, value } = await reader.read();
@@ -548,15 +626,16 @@ async function readMonolithicStream(bodyStream) {
             const systemMatch = buffer.match(/<system>(.*?)<\/system>/s);
             if (systemMatch) {
                 systemPrompt = systemMatch[1];
-                el.promptSystemText.textContent = systemPrompt;
                 buffer = buffer.replace(/<system>.*?<\/system>/s, '');
             }
             const userMatch = buffer.match(/<prompt>(.*?)<\/prompt>/s);
             if (userMatch) {
                 userPrompt = userMatch[1];
-                el.promptUserText.textContent = userPrompt;
                 buffer = buffer.replace(/<prompt>.*?<\/prompt>/s, '');
                 promptParsed = true;
+                
+                // Update prompt box
+                agentObj.promptBody.textContent = `[SYSTEM INSTRUCTIONS]:\n${systemPrompt.trim()}\n\n[USER DIALOGUE PAYLOAD]:\n${userPrompt.trim()}`;
             }
         }
         
@@ -569,15 +648,19 @@ async function readMonolithicStream(bodyStream) {
                         // Safely print answer characters
                         const clean = buffer;
                         buffer = '';
-                        if (clean) el.modelOutput.textContent += clean;
+                        if (clean) {
+                            agentObj.responseBody.textContent += clean;
+                            agentObj.responseBody.scrollTop = agentObj.responseBody.scrollHeight;
+                        }
                         break;
                     } else {
                         // Flush text before thought
                         const before = buffer.substring(0, idx);
-                        if (before) el.modelOutput.textContent += before;
+                        if (before) agentObj.responseBody.textContent += before;
                         buffer = buffer.substring(idx + '<thought>'.length);
                         inThinking = true;
-                        el.thoughtBlock.classList.remove('hidden');
+                        
+                        agentObj.responseBody.textContent += "\n[REASONING PATH]:\n";
                     }
                 } else {
                     const idx = buffer.indexOf('</thought>');
@@ -585,13 +668,17 @@ async function readMonolithicStream(bodyStream) {
                         // Append to thought
                         const clean = buffer;
                         buffer = '';
-                        if (clean) el.thoughtOutput.textContent += clean;
+                        if (clean) {
+                            agentObj.responseBody.textContent += clean;
+                            agentObj.responseBody.scrollTop = agentObj.responseBody.scrollHeight;
+                        }
                         break;
                     } else {
                         const inBetween = buffer.substring(0, idx);
-                        if (inBetween) el.thoughtOutput.textContent += inBetween;
+                        if (inBetween) agentObj.responseBody.textContent += inBetween;
                         buffer = buffer.substring(idx + '</thought>'.length);
                         inThinking = false;
+                        agentObj.responseBody.textContent += "\n\n[FINAL RESPONSE]:\n";
                     }
                 }
             }
@@ -600,15 +687,13 @@ async function readMonolithicStream(bodyStream) {
     
     // Flush remaining buffer
     if (buffer) {
-        if (inThinking) {
-            el.thoughtOutput.textContent += buffer;
-        } else {
-            el.modelOutput.textContent += buffer;
-        }
+        agentObj.responseBody.textContent += buffer;
     }
     
-    // Post-execution evaluation
-    evaluateSingleRunOutput(el.modelOutput.textContent);
+    agentObj.tab.classList.remove('active-streaming');
+    agentObj.tab.classList.add('done-streaming');
+    
+    evaluateSingleRunOutput(agentObj.responseBody.textContent);
 }
 
 async function readAgentStream(bodyStream) {
@@ -616,7 +701,6 @@ async function readAgentStream(bodyStream) {
     const decoder = new TextDecoder();
     
     let buffer = '';
-    const agentBoxes = {}; // reference to DOM elements of agent boxes
     
     while (true) {
         const { done, value } = await reader.read();
@@ -636,42 +720,36 @@ async function readAgentStream(bodyStream) {
                 const event = ev.event;
                 
                 if (agent) {
-                    let box = agentBoxes[agent];
-                    if (!box) {
-                        // Create and inject agent console card
-                        box = document.createElement('div');
-                        box.className = 'agent-box';
-                        box.setAttribute('data-agent', agent);
-                        box.innerHTML = `
-                            <div class="agent-box-header">
-                                <span>${agent}</span>
-                                <span class="status-dot"></span>
-                            </div>
-                            <div class="agent-box-body"></div>
-                        `;
-                        el.agentVisualizer.appendChild(box);
-                        agentBoxes[agent] = box;
-                    }
-                    
-                    const body = box.querySelector('.agent-box-body');
+                    const agentObj = getOrCreateAgentTab(agent);
                     
                     if (event === 'prompt') {
                         // Set active and inject prompts
-                        document.querySelectorAll('.agent-box').forEach(b => b.classList.remove('active'));
-                        box.classList.add('active');
+                        selectAgentTab(agent);
+                        
+                        agentObj.tab.classList.add('active-streaming');
                         
                         const msgs = ev.messages || [];
                         const systemMsg = msgs.find(m => m.role === 'system');
                         const userMsg = msgs.find(m => m.role === 'user');
-                        if (systemMsg) el.promptSystemText.textContent = `[${agent}]:\n${systemMsg.content}`;
-                        if (userMsg) el.promptUserText.textContent = `[${agent}]:\n${userMsg.content}`;
+                        let promptText = '';
+                        if (systemMsg) promptText += `[SYSTEM INSTRUCTIONS]:\n${systemMsg.content.trim()}\n\n`;
+                        if (userMsg) {
+                            let userContent = userMsg.content;
+                            if (Array.isArray(userContent)) {
+                                // Extract text from multimodal payload
+                                const txtItem = userContent.find(i => i.type === 'text');
+                                userContent = txtItem ? txtItem.text : JSON.stringify(userContent);
+                            }
+                            promptText += `[USER DIALOGUE PAYLOAD]:\n${userContent.trim()}`;
+                        }
+                        agentObj.promptBody.textContent = promptText || '(No prompt context)';
                     } else if (event === 'chunk') {
                         // Append text
-                        body.textContent += ev.text;
-                        body.scrollTop = body.scrollHeight;
+                        agentObj.responseBody.textContent += ev.text;
+                        agentObj.responseBody.scrollTop = agentObj.responseBody.scrollHeight;
                     } else if (event === 'done') {
-                        box.classList.remove('active');
-                        box.classList.add('done');
+                        agentObj.tab.classList.remove('active-streaming');
+                        agentObj.tab.classList.add('done-streaming');
                     }
                 }
                 
@@ -710,12 +788,8 @@ async function readAgentStream(bodyStream) {
 }
 
 function clearConsole() {
-    el.thoughtBlock.classList.add('hidden');
-    el.thoughtOutput.textContent = '';
-    el.modelOutput.textContent = 'Stream ready...';
-    el.agentVisualizer.innerHTML = '';
-    el.promptSystemText.textContent = '(None generated yet)';
-    el.promptUserText.textContent = '(None generated yet)';
+    el.agentTabsBar.innerHTML = '';
+    el.agentPanesContainer.innerHTML = '<div class="console-placeholder-msg">Console ready. Select configurations and click Run.</div>';
 }
 
 // ── Metrics Parser & Charting ────────────────────────────────────────────────

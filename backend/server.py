@@ -150,6 +150,7 @@ class AgentChatRequest(BaseModel):
     template_name: Optional[str] = "erc_default"
     workflow: str = "reasoner_verifier"
     vision_frames: int = 3
+    soft_label: bool = False
 
 
 class BenchmarkRequest(BaseModel):
@@ -550,6 +551,7 @@ async def agent_chat(req: AgentChatRequest):
         "target_index": req.target_index,
         "window_size": req.window_size,
         "vision_frames": req.vision_frames,
+        "soft_label": req.soft_label,
     }
     template = req.template_name or "erc_default"
     try:

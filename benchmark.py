@@ -999,61 +999,63 @@ def main():
         )
         return collect_full_response(stream)
 
-    def call_backend_multi(dialogue, utt_idx, utterances) -> tuple[str, str]:
+    def call_backend_multi(dialogue, utt_idx, utterances) -> tuple[str, str, dict]:
         """
-        Call the /agent/chat endpoint (multi-agent, streaming NDJSON).
-        Prints each agent step as it arrives.
-        Returns ("", final_label) — no separate thinking text in this mode.
+        Runs the multi-agent pipeline internally in Python.
+        Returns (raw_answer_thoughts, final_label, soft_labels).
         """
-        import urllib.request, urllib.error
+        import asyncio
+        from backend.agents_logic import run_multiagent_stream
 
-        ds_key = dataset_name  # already inferred
-
-        payload = json.dumps(
-            {
-                "dataset_name": dataset_alias,  # full alias the server understands (e.g. 'meld_dev')
-                "dialogue_id": dialogue["dialogue_id"],
-                "target_index": utt_idx,
-                "model_id": model,
-                "provider": args.provider,
-                "window_size": args.window,
-                "template_name": os.path.basename(prompt_path),
-                "workflow": args.workflow,
-                "vision_frames": args.vision_frames,
-            }
-        ).encode()
-
-        req = urllib.request.Request(
-            f"{BACKEND_URL}/agent/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        # Context contains references to the dialogue structures
+        original_context = {
+            "dataset_name": dataset_name,
+            "dialogue_id": dialogue["dialogue_id"],
+            "utterances": utterances,
+            "target_index": utt_idx,
+            "window_size": args.window,
+            "vision_frames": args.vision_frames,
+            "simulated_results": simulated_results, # Pass loaded pre-computed dictionary
+            "soft_label": args.soft_label,
+        }
 
         final_label = ""
-        current_agent = ""
+        raw_verifier = ""
+        soft_labels = {}
+
+        async def run_local():
+            nonlocal final_label, raw_verifier, soft_labels
+            stream_gen = run_multiagent_stream(
+                messages=[],
+                valid_emotions=", ".join(labels),
+                model=model,
+                provider=args.provider,
+                workflow=args.workflow,
+                original_context=original_context,
+            )
+            async for line in stream_gen:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                try:
+                    ev = json.loads(line_str)
+                except:
+                    continue
+
+                if ev.get("event") == "final":
+                    final_label = ev.get("label", "")
+                    raw_verifier = ev.get("raw_verifier", "")
+                    if "soft_labels" in ev:
+                        soft_labels = ev["soft_labels"]
+
         try:
-            with urllib.request.urlopen(req) as resp:
-                for raw_line in resp:
-                    line = raw_line.decode().strip()
-                    if not line:
-                        continue
-                    try:
-                        ev = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(run_local())
+        except Exception as e:
+            print(f"{C_RED}Local agent run error: {e}{C_RESET}")
+            return "", "error", {}
 
-                    agent_name = ev.get("agent", "")
-                    event_type = ev.get("event", "")
-
-                    if event_type == "final":
-                        final_label = ev.get("label", "")
-
-        except urllib.error.URLError as e:
-            print(f"{C_RED}Backend error: {e}{C_RESET}")
-            return "", "error"
-
-        return "", final_label
+        return raw_verifier, final_label, soft_labels
 
     if args.agent:
         bridge = None
@@ -1086,7 +1088,7 @@ def main():
 
                 if args.agent:
                     # ── Multi-agent mode ──────────────────────────────────────
-                    _, raw_answer = call_backend_multi(diag, utt_idx, utterances)
+                    raw_answer, norm, pred_soft = call_backend_multi(diag, utt_idx, utterances)
                     thinking_text = ""
                 else:
                     # ── Single-agent mode ─────────────────────────────────────
@@ -1108,33 +1110,33 @@ def main():
                                 print(f"{C_YELLOW}  [API Error: {e}. Retrying in {wait_time}s... ({attempt+1}/{retries})]{C_RESET}")
                                 time.sleep(wait_time)
 
-                if args.soft_label:
-                    pred_soft = parse_soft_prediction(raw_answer, labels)
-                    if pred_soft is None:
-                        # Retry with temperature 0.0
-                        print(
-                            f"{C_YELLOW}  [Invalid JSON, retrying with temp=0.0...]{C_RESET}"
-                        )
-                        thinking_text, raw_answer = call_backend_single(
-                            diag, utt_idx, utterances, temperature=0.0
-                        )
+                    if args.soft_label:
                         pred_soft = parse_soft_prediction(raw_answer, labels)
+                        if pred_soft is None:
+                            # Retry with temperature 0.0
+                            print(
+                                f"{C_YELLOW}  [Invalid JSON, retrying with temp=0.0...]{C_RESET}"
+                            )
+                            thinking_text, raw_answer = call_backend_single(
+                                diag, utt_idx, utterances, temperature=0.0
+                            )
+                            pred_soft = parse_soft_prediction(raw_answer, labels)
 
-                    if pred_soft is None:
-                        # Fallback: neutral=1.0
-                        print(
-                            f"{C_RED}  [Retry failed, defaulting to neutral distribution]{C_RESET}"
-                        )
-                        pred_soft = {
-                            l.lower(): (1.0 if l.lower() == "neutral" else 0.0)
-                            for l in labels
-                        }
+                        if pred_soft is None:
+                            # Fallback: neutral=1.0
+                            print(
+                                f"{C_RED}  [Retry failed, defaulting to neutral distribution]{C_RESET}"
+                            )
+                            pred_soft = {
+                                l.lower(): (1.0 if l.lower() == "neutral" else 0.0)
+                                for l in labels
+                            }
 
-                # Determine "hard" label for standard metrics (Acc, F1)
-                if args.soft_label:
-                    norm = get_argmax_label(pred_soft)
-                else:
-                    norm = normalize_prediction(raw_answer, labels)
+                    # Determine "hard" label for standard metrics (Acc, F1)
+                    if args.soft_label:
+                        norm = get_argmax_label(pred_soft)
+                    else:
+                        norm = normalize_prediction(raw_answer, labels)
 
                 gt = unify_label(utt["emotion"])
 

@@ -9,6 +9,8 @@ Usage examples:
   python probe.py -d meld_dev -c 3 -u 1 -m qwen3:4b --no-think
   python probe.py -d iemocap -c 0 -u 2 --provider openrouter -m anthropic/claude-3.5-sonnet
   python probe.py -d meld_dev -c 3 -u 1 --window 3 --list-utterances
+  python probe.py -d meld_dev -c 3 -u 1 --agent --workflow tva_theory_soft --soft-label   # Run internal multi-agent flow
+  python probe.py -d meld_dev -c 3 -u 1 --agent --text-results results/text_run.json    # Run agent flow using pre-computed text predictions
 """
 
 import json
@@ -84,6 +86,7 @@ PROCESSED_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data", "processed"
 )
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
+RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 
 DATASET_ALIASES = {
     "meld_dev": "meld_dev_processed.json",
@@ -466,6 +469,9 @@ def main():
         action="store_true",
         help="Request probability distribution and calculate JS-divergence",
     )
+    parser.add_argument("--text-results", type=str, help="Path to pre-computed text modality results JSON")
+    parser.add_argument("--vision-results", type=str, help="Path to pre-computed vision modality results JSON")
+    parser.add_argument("--audio-results", type=str, help="Path to pre-computed audio modality results JSON")
 
     args = parser.parse_args()
 
@@ -515,6 +521,44 @@ def main():
         )
     )
     print(f"{C_GREEN}[OK] Loaded {len(dialogues)} dialogues{C_RESET}")
+
+    # --- Load Agentic Simulation Results ---
+    simulated_results = {}
+
+    def load_sim_results(path, modality_key):
+        if not path:
+            return
+        if not os.path.isfile(path):
+            # Try results dir if relative
+            if not os.path.isabs(path) and not path.startswith("results"):
+                 alt_path = os.path.join(RESULTS_DIR, path)
+                 if os.path.isfile(alt_path):
+                     path = alt_path
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for res in data.get("results", []):
+                    d_id = res.get("dialogue_id")
+                    u_id = res.get("utterance_id")
+                    if d_id is not None and u_id is not None:
+                        try:
+                            u_id_parsed = int(u_id)
+                        except (ValueError, TypeError):
+                            u_id_parsed = str(u_id)
+                        lookup_key = (str(d_id), u_id_parsed)
+                        if lookup_key not in simulated_results:
+                            simulated_results[lookup_key] = {}
+                        simulated_results[lookup_key][modality_key] = res.get("prediction_raw", "")
+            print(f"{C_DIM}  Loaded simulated {modality_key} results from {path}{C_RESET}")
+        except Exception as e:
+            print(f"{C_RED}Error loading {modality_key} results: {e}{C_RESET}")
+
+    load_sim_results(args.text_results, "text_output")
+    load_sim_results(args.vision_results, "vision_output")
+    load_sim_results(args.audio_results, "audio_output")
+
+    is_simulation = bool(simulated_results)
 
     # ── Resolve conversation ──────────────────────────────────────────────────
     conv_idx = args.conversation
@@ -582,9 +626,6 @@ def main():
             default_tpl
             if os.path.isfile(default_tpl)
             else (templates[0] if templates else default_tpl)
-        )
-        print(
-            f"{C_DIM}Agent mode: using template {os.path.relpath(prompt_path)} (override with -p){C_RESET}"
         )
     else:
         default_tpl = os.path.join(PROMPTS_DIR, "erc_default.txt")
@@ -689,30 +730,32 @@ def main():
         sl = target_utt["soft_labels"]
         sl_str = ", ".join(f"{k}={v:.2f}" for k, v in sl.items())
         print(f"  {C_BOLD}Soft labels: {C_RESET}{C_DIM}{sl_str}{C_RESET}")
-    print(
-        f"  {C_BOLD}Template:    {C_RESET}{C_DIM}{os.path.relpath(prompt_path)}{C_RESET}"
-    )
-    print(f"  {C_BOLD}Window:      {C_RESET}{args.window} prior turns")
-    thinking_label = (
-        "off"
-        if not include_thinking
-        else (
-            f"on  (budget: {think_budget} tokens)"
-            if think_budget
-            else "on  (unlimited – raise --max-tokens if answer is cut off)"
+    if not args.agent:
+        print(
+            f"  {C_BOLD}Template:    {C_RESET}{C_DIM}{os.path.relpath(prompt_path)}{C_RESET}"
         )
-    )
-    print(f"  {C_BOLD}Thinking:    {C_RESET}{thinking_label}")
-    print(f"  {C_BOLD}Max tokens:  {C_RESET}{args.max_tokens}")
+    print(f"  {C_BOLD}Window:      {C_RESET}{args.window} prior turns")
+    if not args.agent:
+        thinking_label = (
+            "off"
+            if not include_thinking
+            else (
+                f"on  (budget: {think_budget} tokens)"
+                if think_budget
+                else "on  (unlimited – raise --max-tokens if answer is cut off)"
+            )
+        )
+        print(f"  {C_BOLD}Thinking:    {C_RESET}{thinking_label}")
+        print(f"  {C_BOLD}Max tokens:  {C_RESET}{args.max_tokens}")
 
-    vision_status = (
-        f"{C_GREEN}active{C_RESET}" if include_v else f"{C_DIM}inactive{C_RESET}"
-    )
-    audio_status = (
-        f"{C_GREEN}active{C_RESET}" if include_a else f"{C_DIM}inactive{C_RESET}"
-    )
-    print(f"  {C_BOLD}Vision:      {C_RESET}{vision_status}")
-    print(f"  {C_BOLD}Audio:       {C_RESET}{audio_status}")
+        vision_status = (
+            f"{C_GREEN}active{C_RESET}" if include_v else f"{C_DIM}inactive{C_RESET}"
+        )
+        audio_status = (
+            f"{C_GREEN}active{C_RESET}" if include_a else f"{C_DIM}inactive{C_RESET}"
+        )
+        print(f"  {C_BOLD}Vision:      {C_RESET}{vision_status}")
+        print(f"  {C_BOLD}Audio:       {C_RESET}{audio_status}")
 
     # ── Media Path Display ────────────────────────────────────────────────────
     if include_v or include_a:
@@ -735,11 +778,12 @@ def main():
     )
 
     # ── Section 1: Actual prompt ──────────────────────────────────────────────
-    print_section(
-        "ACTUAL PROMPT SENT TO LLM",
-        render_messages_as_prompt(messages, media_reqs),
-        C_BLUE,
-    )
+    if not args.agent:
+        print_section(
+            "ACTUAL PROMPT SENT TO LLM",
+            render_messages_as_prompt(messages, media_reqs),
+            C_BLUE,
+        )
 
     # ── Section 2 & 3: LLM response ──────────────────────────────────────────
     from backend.utils import normalize_prediction
@@ -747,30 +791,23 @@ def main():
     BACKEND_URL = args.backend_url.rstrip("/")
 
     if args.agent:
-        # ── Multi-agent path ───────────────────────────────────────────────
-        # In agent mode we skip displaying the ERC template prompt (it is only
-        # used internally to format the conversation context).  Instead we show
-        # each agent's actual prompt and response in order.
-        payload = json.dumps(
-            {
-                "dataset_name": dataset_alias,  # full alias the server understands (e.g. 'meld_dev')
-                "dialogue_id": dialogue["dialogue_id"],
-                "target_index": utt_idx,
-                "model_id": model_id,
-                "provider": args.provider,
-                "window_size": args.window,
-                "template_name": os.path.basename(prompt_path),
-                "workflow": args.workflow,
-                "vision_frames": args.vision_frames,
-            }
-        ).encode()
+        # ── Multi-agent path (Internal Python Execution) ───────────────────
+        # Instead of calling the backend server via HTTP, we run the workflow
+        # internally within the python process using run_multiagent_stream.
+        import asyncio
+        from backend.agents_logic import run_multiagent_stream
 
-        http_req = urllib.request.Request(
-            f"{BACKEND_URL}/agent/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        # Context contains references to the dialogue structures
+        original_context = {
+            "dataset_name": dataset_name,
+            "dialogue_id": dialogue["dialogue_id"],
+            "utterances": utterances,
+            "target_index": utt_idx,
+            "window_size": args.window,
+            "vision_frames": args.vision_frames,
+            "simulated_results": simulated_results, # Pass loaded pre-computed dictionary
+            "soft_label": args.soft_label,
+        }
 
         thinking_text = ""  # Reasoner output (used in Summary)
         answer_text = ""  # Verifier/Finalizer output
@@ -787,106 +824,104 @@ def main():
             "CriticAgent": C_YELLOW,
             "FinalizerAgent": C_GREEN,
         }
-        response_header_printed = (
-            set()
-        )  # track which agents have had their response header shown
+        response_header_printed = set()
+
+        async def run_local_agent():
+            nonlocal thinking_text, answer_text, final_label, finalizer_out_dist
+            stream_gen = run_multiagent_stream(
+                messages=messages,
+                valid_emotions=", ".join(labels),
+                model=model_id,
+                provider=args.provider,
+                workflow=args.workflow,
+                original_context=original_context,
+            )
+            async for line in stream_gen:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                try:
+                    ev = json.loads(line_str)
+                except json.JSONDecodeError:
+                    safe_print(line_str, end="\n")
+                    continue
+
+                agent_name = ev.get("agent", "")
+                color = AGENT_COLORS.get(agent_name, C_CYAN)
+                event_type = ev.get("event", "")
+
+                if event_type == "prompt":
+                    print()
+                    safe_print(RULE, end="\n")
+                    safe_print(
+                        f" >> {agent_name} - PROMPT ", color + C_BOLD, end="\n"
+                    )
+                    safe_print(RULE, end="\n")
+                    prompt_msgs = ev.get("messages", [])
+                    safe_print(render_messages_as_prompt(prompt_msgs), end="\n")
+                    print()
+
+                elif event_type == "chunk":
+                    text = ev.get("text", "")
+                    if text:
+                        if agent_name not in response_header_printed:
+                            response_header_printed.add(agent_name)
+                            print()
+                            safe_print(
+                                f" >> {agent_name} - RESPONSE ",
+                                color + C_BOLD,
+                                end="\n",
+                            )
+                            safe_print(RULE, end="\n")
+
+                        display_color = color
+                        process_text = text
+
+                        if "<thought>" in text:
+                            parts = text.split("<thought>", 1)
+                            safe_print(parts[0], color)
+                            safe_print("<thought>", C_GRAY)
+                            display_color = C_GRAY
+                            process_text = parts[1]
+                        elif "</thought>" in text:
+                            parts = text.split("</thought>", 1)
+                            safe_print(parts[0], C_GRAY)
+                            safe_print("</thought>", C_GRAY)
+                            display_color = color
+                            process_text = parts[1]
+
+                        safe_print(process_text, display_color)
+
+                        if (
+                            agent_name == "ReasonerAgent"
+                            or "TextAgent" in agent_name
+                        ):
+                            thinking_text += text
+                        else:
+                            answer_text += text
+
+                elif event_type == "done":
+                    print()  # newline after streaming
+                    safe_print(RULE, end="\n")
+                    sys.stdout.flush()
+
+                elif event_type == "final":
+                    final_label = ev.get("label", "")
+                    answer_text = ev.get("raw_verifier", answer_text)
+                    if "soft_labels" in ev:
+                        finalizer_out_dist = ev["soft_labels"]
+
+                elif event_type == "error":
+                    msg = ev.get("message", "Unknown backend error")
+                    safe_print(
+                        f"\n[!] AGENT ERROR ({agent_name}): {msg}", C_RED, end="\n"
+                    )
 
         try:
-            with urllib.request.urlopen(http_req) as resp:
-                for raw_line in resp:
-                    line = raw_line.decode().strip()
-                    if not line:
-                        continue
-                    try:
-                        ev = json.loads(line)
-                    except json.JSONDecodeError:
-                        safe_print(line, end="\n")
-                        continue
-
-                    agent_name = ev.get("agent", "")
-                    color = AGENT_COLORS.get(agent_name, C_CYAN)
-                    event_type = ev.get("event", "")
-
-                    if event_type == "prompt":
-                        # ── Show the actual prompt sent to this agent ──────
-                        print()
-                        safe_print(RULE, end="\n")
-                        safe_print(
-                            f" >> {agent_name} - PROMPT ", color + C_BOLD, end="\n"
-                        )
-                        safe_print(RULE, end="\n")
-                        prompt_msgs = ev.get("messages", [])
-                        safe_print(render_messages_as_prompt(prompt_msgs), end="\n")
-                        print()
-
-                    elif event_type == "chunk":
-                        text = ev.get("text", "")
-                        if text:
-                            if agent_name not in response_header_printed:
-                                response_header_printed.add(agent_name)
-                                print()
-                                safe_print(
-                                    f" >> {agent_name} - RESPONSE ",
-                                    color + C_BOLD,
-                                    end="\n",
-                                )
-                                safe_print(RULE, end="\n")
-
-                            # Handle thinking tags within the agent response
-                            display_color = color
-                            process_text = text
-
-                            # Simple state machine for thinking tags across chunks
-                            # (Heuristic: agents use <thought> tags)
-                            if "<thought>" in text:
-                                parts = text.split("<thought>", 1)
-                                safe_print(parts[0], color)
-                                safe_print("<thought>", C_GRAY)
-                                display_color = C_GRAY
-                                process_text = parts[1]
-                            elif "</thought>" in text:
-                                parts = text.split("</thought>", 1)
-                                safe_print(parts[0], C_GRAY)
-                                safe_print("</thought>", C_GRAY)
-                                display_color = color
-                                process_text = parts[1]
-
-                            safe_print(process_text, display_color)
-
-                            if (
-                                agent_name == "ReasonerAgent"
-                                or "TextAgent" in agent_name
-                            ):
-                                thinking_text += text
-                            else:
-                                answer_text += text
-
-                    elif event_type == "done":
-                        print()  # newline after streaming
-                        safe_print(RULE, end="\n")
-                        sys.stdout.flush()
-
-                    elif event_type == "final":
-                        final_label = ev.get("label", "")
-                        answer_text = ev.get("raw_verifier", answer_text)
-                        if "soft_labels" in ev:
-                            finalizer_out_dist = ev["soft_labels"]
-
-                    elif event_type == "error":
-                        msg = ev.get("message", "Unknown backend error")
-                        safe_print(
-                            f"\n[!] AGENT ERROR ({agent_name}): {msg}", C_RED, end="\n"
-                        )
-
-        except urllib.error.URLError as e:
-            safe_print(
-                f"\nBackend error: {e}. Is the server running on {BACKEND_URL}?",
-                C_RED,
-                end="\n",
-            )
-            sys.exit(1)
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(run_local_agent())
         except Exception as e:
-            safe_print(f"\nUnexpected error during agent chat: {e}", C_RED, end="\n")
+            safe_print(f"\nUnexpected error during local agent run: {e}", C_RED, end="\n")
             sys.exit(1)
     else:
         # ── Single-agent path (direct InferenceBridge) ─────────────────────

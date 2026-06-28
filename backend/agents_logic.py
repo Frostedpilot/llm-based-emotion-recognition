@@ -42,6 +42,7 @@ async def run_agent_step(
     model: str,
     provider: str,
     bridge: InferenceBridge,
+    soft_label: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Runs a single agent step by:
@@ -104,6 +105,7 @@ async def run_agent_step(
                 temperature=0.0,
                 max_tokens=4096,
                 stream=True,
+                soft_label=soft_label,
             ),
         )
 
@@ -254,326 +256,182 @@ def format_final_event(text, valid_emotions):
 # ── New Modality-Specific Workflows ──────────────────────────────────────────
 
 
-async def multimodal_tv_workflow(
-    messages, valid_emotions, model, provider, bridge, original_context
-):
-    """Workflow: Text Agent + Vision Agent -> Resolver"""
+async def run_multimodal_resolver_internal(
+    messages,
+    valid_emotions: str,
+    model: str,
+    provider: str,
+    bridge: InferenceBridge,
+    original_context: dict,
+    workflow_name: str,
+) -> AsyncGenerator[str, None]:
+    # Extract config
+    simulated_results = original_context.get("simulated_results")
+    utterances = original_context.get("utterances", [])
+    target_idx = original_context.get("target_index")
+    window_size = original_context.get("window_size", 5)
+    vision_frames = original_context.get("vision_frames", 3)
+    dataset_name = original_context.get("dataset_name", "meld")
+
+    INTERNAL_WORKFLOW_TEMPLATES = {
+        "tva_theory_soft": {
+            "text": "erc_cot_soft_label.txt",
+            "vision_default": "vision_only_soft_label_cot.txt",
+            "vision_iemocap": "vision_only_soft_label_cot_iemocap.txt",
+            "acoustic": "audio_only_soft_label_cot.txt",
+            "resolver": "agent_resolver_theory_soft.txt",
+        },
+        "tva_theory": {
+            "text": "erc_cot.txt",
+            "vision_default": "vision_only_cot.txt",
+            "vision_iemocap": "vision_only_cot_iemocap.txt",
+            "acoustic": "audio_only.txt",
+            "resolver": "agent_resolver_theory.txt",
+        },
+        "modality_tva": {
+            "text": "agent_text.txt",
+            "vision_default": "agent_vision.txt",
+            "vision_iemocap": "agent_vision.txt",
+            "acoustic": "agent_egemaps.txt",
+            "resolver": "agent_resolver.txt",
+        },
+        "modality_tv": {
+            "text": "agent_text.txt",
+            "vision_default": "agent_vision.txt",
+            "vision_iemocap": "agent_vision.txt",
+            "resolver": "agent_resolver.txt",
+        },
+        "modality_ta": {
+            "text": "agent_text.txt",
+            "acoustic": "agent_egemaps.txt",
+            "resolver": "agent_resolver.txt",
+        }
+    }
+
+    workflow_key = workflow_name if workflow_name in INTERNAL_WORKFLOW_TEMPLATES else "tva_theory_soft"
+    tpls = INTERNAL_WORKFLOW_TEMPLATES[workflow_key]
+
     ctx = original_context.copy()
 
+    # Get lookup key for simulated results
+    lookup_key = None
+    if simulated_results and target_idx is not None and utterances:
+        d_id = original_context.get("dialogue_id")
+        u_id = utterances[target_idx].get("utterance_id", target_idx)
+        try:
+            u_id_parsed = int(u_id)
+        except (ValueError, TypeError):
+            u_id_parsed = str(u_id)
+        lookup_key = (str(d_id), u_id_parsed)
+
+    sim_data = simulated_results.get(lookup_key, {}) if (simulated_results and lookup_key) else {}
+
     # 1. Text Agent
-    try:
-        async for ev in run_agent_step(
-            "TextAgent", "agent_text", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["text_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["text_output"] = (
-                    f"[ERROR]: Text analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["text_output"] = f"[ERROR]: Text analysis crashed: {str(e)}"
+    if tpls.get("text"):
+        if "text_output" in sim_data:
+            ctx["text_output"] = sim_data["text_output"]
+            yield json.dumps({
+                "agent": "TextAgent",
+                "event": "done",
+                "full": sim_data["text_output"]
+            }) + "\n"
+        else:
+            text_out = ""
+            is_soft = "soft" in tpls["text"]
+            async for ev in run_agent_step("TextAgent", tpls["text"], ctx, model, provider, bridge, soft_label=is_soft):
+                yield ev
+                try:
+                    data = json.loads(ev)
+                    if data.get("event") == "done":
+                        text_out = data["full"]
+                except:
+                    pass
+            ctx["text_output"] = text_out
 
     # 2. Vision Agent
-    try:
-        async for ev in run_agent_step(
-            "VisionAgent", "agent_vision", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["vision_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["vision_output"] = (
-                    f"[ERROR]: Vision analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["vision_output"] = f"[ERROR]: Vision analysis crashed: {str(e)}"
-
-    # 3. Resolver
-    resolver_out = ""
-    async for ev in run_agent_step(
-        "ResolverAgent", "agent_resolver", ctx, model, provider, bridge
-    ):
-        yield ev
-        try:
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                resolver_out = data.get("full", "")
-        except:
-            continue
-
-    yield format_final_event(resolver_out, valid_emotions)
-
-
-async def multimodal_ta_workflow(
-    messages, valid_emotions, model, provider, bridge, original_context
-):
-    """Workflow: Text Agent + Acoustic Agent -> Resolver"""
-    ctx = original_context.copy()
-
-    # 1. Text Agent
-    try:
-        async for ev in run_agent_step(
-            "TextAgent", "agent_text", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["text_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["text_output"] = (
-                    f"[ERROR]: Text analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["text_output"] = f"[ERROR]: Text analysis crashed: {str(e)}"
-
-    # 2. Acoustic Agent
-    try:
-        async for ev in run_agent_step(
-            "AcousticAgent", "agent_egemaps", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["egemaps_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["egemaps_output"] = (
-                    f"[ERROR]: Acoustic analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["egemaps_output"] = f"[ERROR]: Acoustic analysis crashed: {str(e)}"
-
-    # 3. Resolver
-    resolver_out = ""
-    async for ev in run_agent_step(
-        "ResolverAgent", "agent_resolver", ctx, model, provider, bridge
-    ):
-        yield ev
-        try:
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                resolver_out = data.get("full", "")
-        except:
-            continue
-
-    yield format_final_event(resolver_out, valid_emotions)
-
-
-async def multimodal_tva_workflow(
-    messages, valid_emotions, model, provider, bridge, original_context
-):
-    """Workflow: Text Agent + Vision Agent + Acoustic Agent -> Resolver"""
-    ctx = original_context.copy()
-
-    # 1. Text Agent
-    try:
-        async for ev in run_agent_step(
-            "TextAgent", "agent_text", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["text_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["text_output"] = (
-                    f"[ERROR]: Text analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["text_output"] = f"[ERROR]: Text analysis crashed: {str(e)}"
-
-    # 2. Vision Agent
-    try:
-        async for ev in run_agent_step(
-            "VisionAgent", "agent_vision", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["vision_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["vision_output"] = (
-                    f"[ERROR]: Vision analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["vision_output"] = f"[ERROR]: Vision analysis crashed: {str(e)}"
+    if tpls.get("vision_default"):
+        if "vision_output" in sim_data:
+            ctx["vision_output"] = sim_data["vision_output"]
+            yield json.dumps({
+                "agent": "VisionAgent",
+                "event": "done",
+                "full": sim_data["vision_output"]
+            }) + "\n"
+        else:
+            v_tpl = tpls["vision_iemocap"] if "iemocap" in dataset_name.lower() else tpls["vision_default"]
+            vision_out = ""
+            is_soft = "soft" in v_tpl
+            async for ev in run_agent_step("VisionAgent", v_tpl, ctx, model, provider, bridge, soft_label=is_soft):
+                yield ev
+                try:
+                    data = json.loads(ev)
+                    if data.get("event") == "done":
+                        vision_out = data["full"]
+                except:
+                    pass
+            ctx["vision_output"] = vision_out
 
     # 3. Acoustic Agent
-    try:
-        async for ev in run_agent_step(
-            "AcousticAgent", "agent_egemaps", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["egemaps_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["egemaps_output"] = (
-                    f"[ERROR]: Acoustic analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["egemaps_output"] = f"[ERROR]: Acoustic analysis crashed: {str(e)}"
+    if tpls.get("acoustic"):
+        sim_acoustic = sim_data.get("audio_output") or sim_data.get("acoustic_output") or sim_data.get("egemaps_output")
+        if sim_acoustic:
+            ctx["audio_output"] = ctx["acoustic_output"] = ctx["egemaps_output"] = sim_acoustic
+            yield json.dumps({
+                "agent": "AcousticAgent",
+                "event": "done",
+                "full": sim_acoustic
+            }) + "\n"
+        else:
+            acoustic_out = ""
+            is_soft = "soft" in tpls["acoustic"]
+            async for ev in run_agent_step("AcousticAgent", tpls["acoustic"], ctx, model, provider, bridge, soft_label=is_soft):
+                yield ev
+                try:
+                    data = json.loads(ev)
+                    if data.get("event") == "done":
+                        acoustic_out = data["full"]
+                except:
+                    pass
+            ctx["audio_output"] = ctx["acoustic_output"] = ctx["egemaps_output"] = acoustic_out
 
-    # 4. Resolver
+    # 4. Resolver Agent
     resolver_out = ""
-    async for ev in run_agent_step(
-        "ResolverAgent", "agent_resolver", ctx, model, provider, bridge
-    ):
+    resolver_soft = original_context.get("soft_label", False)
+    async for ev in run_agent_step("ResolverAgent", tpls["resolver"], ctx, model, provider, bridge, soft_label=resolver_soft):
         yield ev
         try:
             data = json.loads(ev)
             if data.get("event") == "done":
-                resolver_out = data.get("full", "")
+                resolver_out = data["full"]
         except:
-            continue
+            pass
 
     yield format_final_event(resolver_out, valid_emotions)
 
 
-async def multimodal_tva_theory_workflow(
-    messages, valid_emotions, model, provider, bridge, original_context
-):
-    """
-    Workflow: Text Agent (erc_cot) + Vision Agent (vision_only_cot) + Acoustic Agent (audio_only) -> Resolver (agent_resolver_theory)
-    """
-    ctx = original_context.copy()
-
-    # 1. Text Agent (erc_cot)
-    try:
-        async for ev in run_agent_step(
-            "TextAgent", "erc_cot.txt", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["text_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["text_output"] = (
-                    f"[ERROR]: Text analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["text_output"] = f"[ERROR]: Text analysis crashed: {str(e)}"
-
-    # 2. Vision Agent (vision_only_cot)
-    try:
-        async for ev in run_agent_step(
-            "VisionAgent", "vision_only_cot.txt", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["vision_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["vision_output"] = (
-                    f"[ERROR]: Vision analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["vision_output"] = f"[ERROR]: Vision analysis crashed: {str(e)}"
-
-    # 3. Acoustic Agent (audio_only)
-    try:
-        async for ev in run_agent_step(
-            "AcousticAgent", "audio_only.txt", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["acoustic_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["acoustic_output"] = (
-                    f"[ERROR]: Acoustic analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["acoustic_output"] = f"[ERROR]: Acoustic analysis crashed: {str(e)}"
-
-    # 4. Resolver (agent_resolver_theory)
-    resolver_out = ""
-    async for ev in run_agent_step(
-        "ResolverAgent", "agent_resolver_theory.txt", ctx, model, provider, bridge
-    ):
+async def multimodal_tv_workflow(messages, valid_emotions, model, provider, bridge, original_context):
+    async for ev in run_multimodal_resolver_internal(messages, valid_emotions, model, provider, bridge, original_context, "modality_tv"):
         yield ev
-        try:
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                resolver_out = data.get("full", "")
-        except:
-            continue
-
-    yield format_final_event(resolver_out, valid_emotions)
 
 
-async def multimodal_tva_theory_soft_workflow(
-    messages, valid_emotions, model, provider, bridge, original_context
-):
-    """
-    Workflow: Text Agent (erc_cot_soft_label) + Vision Agent (vision_only_soft_label_cot) + Acoustic Agent (audio_only_soft_label_cot) -> Resolver (agent_resolver_theory_soft)
-    """
-    ctx = original_context.copy()
-
-    # 1. Text Agent (erc_cot_soft_label)
-    try:
-        async for ev in run_agent_step(
-            "TextAgent", "erc_cot_soft_label.txt", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["text_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["text_output"] = (
-                    f"[ERROR]: Text analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["text_output"] = f"[ERROR]: Text analysis crashed: {str(e)}"
-
-    # 2. Vision Agent (vision_only_soft_label_cot)
-    try:
-        async for ev in run_agent_step(
-            "VisionAgent", "vision_only_soft_label_cot.txt", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["vision_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["vision_output"] = (
-                    f"[ERROR]: Vision analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["vision_output"] = f"[ERROR]: Vision analysis crashed: {str(e)}"
-
-    # 3. Acoustic Agent (audio_only_soft_label_cot)
-    try:
-        async for ev in run_agent_step(
-            "AcousticAgent", "audio_only_soft_label_cot.txt", ctx, model, provider, bridge
-        ):
-            yield ev
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                ctx["acoustic_output"] = data.get("full", "")
-            elif data.get("event") == "error":
-                ctx["acoustic_output"] = (
-                    f"[ERROR]: Acoustic analysis failed: {data.get('message')}"
-                )
-    except Exception as e:
-        ctx["acoustic_output"] = f"[ERROR]: Acoustic analysis crashed: {str(e)}"
-
-    # 4. Resolver (agent_resolver_theory_soft)
-    resolver_out = ""
-    async for ev in run_agent_step(
-        "ResolverAgent", "agent_resolver_theory_soft.txt", ctx, model, provider, bridge
-    ):
+async def multimodal_ta_workflow(messages, valid_emotions, model, provider, bridge, original_context):
+    async for ev in run_multimodal_resolver_internal(messages, valid_emotions, model, provider, bridge, original_context, "modality_ta"):
         yield ev
-        try:
-            data = json.loads(ev)
-            if data.get("event") == "done":
-                resolver_out = data.get("full", "")
-        except:
-            continue
 
-    yield format_final_event(resolver_out, valid_emotions)
+
+async def multimodal_tva_workflow(messages, valid_emotions, model, provider, bridge, original_context):
+    async for ev in run_multimodal_resolver_internal(messages, valid_emotions, model, provider, bridge, original_context, "modality_tva"):
+        yield ev
+
+
+async def multimodal_tva_theory_workflow(messages, valid_emotions, model, provider, bridge, original_context):
+    async for ev in run_multimodal_resolver_internal(messages, valid_emotions, model, provider, bridge, original_context, "tva_theory"):
+        yield ev
+
+
+async def multimodal_tva_theory_soft_workflow(messages, valid_emotions, model, provider, bridge, original_context):
+    async for ev in run_multimodal_resolver_internal(messages, valid_emotions, model, provider, bridge, original_context, "tva_theory_soft"):
+        yield ev
 
 
 # ── Module API ───────────────────────────────────────────────────────────────
