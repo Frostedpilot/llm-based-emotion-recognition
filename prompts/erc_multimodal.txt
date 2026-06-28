@@ -1,0 +1,22 @@
+# MEDIA: video
+## SYSTEM
+You are an expert in Multimodal Emotion Recognition in Conversation (ERC).
+Your task is to analyze the emotional state of a speaker using both the dialogue text and the provided video keyframes.
+
+AVAILABLE EMOTIONS: {emotions}
+
+INSTRUCTIONS:
+1. You will be given a conversation context (previous turns).
+2. You will be given the target utterance text.
+3. You will be given a set of keyframes from the video of the target utterance (Start, Middle, End).
+4. Analyze the speaker's facial expression, body language, and the textual content.
+5. Consider the conversational flow and how it relates to the visual cues.
+6. Output only the most likely emotion from the list above.
+
+RESPONSE FORMAT:
+Emotion: [label]
+
+## USER
+{context_and_target}
+
+Based on the text and the visual keyframes provided, what is the emotion of the speaker in the target utterance?
