@@ -90,7 +90,7 @@ def parse_soft_prediction(raw: str, valid_labels: list) -> dict:
         except json.JSONDecodeError:
             # 3. Regex Fallback: manual pair extraction (handles missing quotes etc.)
             # Looks for "label": 0.5 or label: 0.5
-            pairs = re.findall(r"['\"]?(\w+)['\"]?\s*:\s*(\d*\.?\d+)", dict_str)
+            pairs = re.findall(r"['\"`]?(\w+)['\"`]?\s*:\s*(\d*\.?\d+)", dict_str)
             data = {k: float(v) for k, v in pairs}
 
         if not isinstance(data, dict) or not data:

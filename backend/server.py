@@ -169,6 +169,8 @@ class BenchmarkRequest(BaseModel):
     vision_frames: int = 3
     agent_mode: bool = False
     workflow: str = "reasoner_verifier"
+    output_name: Optional[str] = None
+    soft_label: bool = False
 
 
 EMOTION_LABELS = {
@@ -348,8 +350,9 @@ async def run_inference(req: InferenceRequest):
 
     # For Qwen 3.5 models, inject /no_think directive at the start of user message
     if req.disable_thinking and len(messages) > 1:
-        if not messages[1]["content"].startswith("/no_think"):
-            messages[1]["content"] = "/no_think\n" + messages[1]["content"]
+        content = messages[1]["content"]
+        if isinstance(content, str) and not content.startswith("/no_think"):
+            messages[1]["content"] = "/no_think\n" + content
 
     # Multimodal handling via request or template metadata
     media_reqs = metadata.get("media", [])
@@ -704,10 +707,9 @@ async def run_benchmark(req: BenchmarkRequest):
                 else:
                     # Single-agent path
                     if req.disable_thinking and len(messages) > 1:
-                        if not messages[1]["content"].startswith("/no_think"):
-                            messages[1]["content"] = (
-                                "/no_think\n" + messages[1]["content"]
-                            )
+                        content = messages[1]["content"]
+                        if isinstance(content, str) and not content.startswith("/no_think"):
+                            messages[1]["content"] = "/no_think\n" + content
 
                     # Multimodal handling via request or template metadata
                     media_reqs = metadata.get("media", [])
@@ -872,6 +874,10 @@ async def run_benchmark(req: BenchmarkRequest):
             "Content-Encoding": "identity",
         },
     )
+
+
+# Serve static frontend UI
+app.mount("/", StaticFiles(directory=str(BASE_DIR / "backend" / "static"), html=True), name="static")
 
 
 if __name__ == "__main__":

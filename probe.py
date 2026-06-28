@@ -775,6 +775,7 @@ def main():
         thinking_text = ""  # Reasoner output (used in Summary)
         answer_text = ""  # Verifier/Finalizer output
         final_label = ""
+        finalizer_out_dist = {}
 
         AGENT_COLORS = {
             "TextAgent": C_BLUE,
@@ -868,6 +869,8 @@ def main():
                     elif event_type == "final":
                         final_label = ev.get("label", "")
                         answer_text = ev.get("raw_verifier", answer_text)
+                        if "soft_labels" in ev:
+                            finalizer_out_dist = ev["soft_labels"]
 
                     elif event_type == "error":
                         msg = ev.get("message", "Unknown backend error")

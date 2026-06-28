@@ -102,7 +102,7 @@ async def run_agent_step(
                 model=model,
                 messages=messages,
                 temperature=0.0,
-                max_tokens=2048,
+                max_tokens=4096,
                 stream=True,
             ),
         )
@@ -216,10 +216,25 @@ async def self_correction_workflow(
 
 def format_final_event(text, valid_emotions):
     try:
-        from utils import normalize_prediction
+        from utils import normalize_prediction, parse_soft_prediction, get_argmax_label
     except ImportError:
-        from backend.utils import normalize_prediction
+        from backend.utils import normalize_prediction, parse_soft_prediction, get_argmax_label
     valid_list = [e.strip() for e in valid_emotions.split(",")]
+    
+    # Try parsing soft labels first if it is a soft verifier output
+    soft_labels = parse_soft_prediction(text, valid_list)
+    if soft_labels:
+        label = get_argmax_label(soft_labels)
+        return (
+            json.dumps({
+                "event": "final",
+                "label": label,
+                "raw_verifier": text.strip(),
+                "soft_labels": soft_labels
+            })
+            + "\n"
+        )
+
     # Extract "Emotion: <label>" using regex
     match = re.search(r"(?i)Emotion:\s*[*_`\"']*([a-zA-Z]+)[*_`\"']*", text)
     label = ""
@@ -343,9 +358,6 @@ async def multimodal_ta_workflow(
                 resolver_out = data.get("full", "")
         except:
             continue
-
-    yield format_final_event(resolver_out, valid_emotions)
-
 
     yield format_final_event(resolver_out, valid_emotions)
 
@@ -492,6 +504,78 @@ async def multimodal_tva_theory_workflow(
     yield format_final_event(resolver_out, valid_emotions)
 
 
+async def multimodal_tva_theory_soft_workflow(
+    messages, valid_emotions, model, provider, bridge, original_context
+):
+    """
+    Workflow: Text Agent (erc_cot_soft_label) + Vision Agent (vision_only_soft_label_cot) + Acoustic Agent (audio_only_soft_label_cot) -> Resolver (agent_resolver_theory_soft)
+    """
+    ctx = original_context.copy()
+
+    # 1. Text Agent (erc_cot_soft_label)
+    try:
+        async for ev in run_agent_step(
+            "TextAgent", "erc_cot_soft_label.txt", ctx, model, provider, bridge
+        ):
+            yield ev
+            data = json.loads(ev)
+            if data.get("event") == "done":
+                ctx["text_output"] = data.get("full", "")
+            elif data.get("event") == "error":
+                ctx["text_output"] = (
+                    f"[ERROR]: Text analysis failed: {data.get('message')}"
+                )
+    except Exception as e:
+        ctx["text_output"] = f"[ERROR]: Text analysis crashed: {str(e)}"
+
+    # 2. Vision Agent (vision_only_soft_label_cot)
+    try:
+        async for ev in run_agent_step(
+            "VisionAgent", "vision_only_soft_label_cot.txt", ctx, model, provider, bridge
+        ):
+            yield ev
+            data = json.loads(ev)
+            if data.get("event") == "done":
+                ctx["vision_output"] = data.get("full", "")
+            elif data.get("event") == "error":
+                ctx["vision_output"] = (
+                    f"[ERROR]: Vision analysis failed: {data.get('message')}"
+                )
+    except Exception as e:
+        ctx["vision_output"] = f"[ERROR]: Vision analysis crashed: {str(e)}"
+
+    # 3. Acoustic Agent (audio_only_soft_label_cot)
+    try:
+        async for ev in run_agent_step(
+            "AcousticAgent", "audio_only_soft_label_cot.txt", ctx, model, provider, bridge
+        ):
+            yield ev
+            data = json.loads(ev)
+            if data.get("event") == "done":
+                ctx["acoustic_output"] = data.get("full", "")
+            elif data.get("event") == "error":
+                ctx["acoustic_output"] = (
+                    f"[ERROR]: Acoustic analysis failed: {data.get('message')}"
+                )
+    except Exception as e:
+        ctx["acoustic_output"] = f"[ERROR]: Acoustic analysis crashed: {str(e)}"
+
+    # 4. Resolver (agent_resolver_theory_soft)
+    resolver_out = ""
+    async for ev in run_agent_step(
+        "ResolverAgent", "agent_resolver_theory_soft.txt", ctx, model, provider, bridge
+    ):
+        yield ev
+        try:
+            data = json.loads(ev)
+            if data.get("event") == "done":
+                resolver_out = data.get("full", "")
+        except:
+            continue
+
+    yield format_final_event(resolver_out, valid_emotions)
+
+
 # ── Module API ───────────────────────────────────────────────────────────────
 
 WORKFLOW_REGISTRY: Dict[str, Callable] = {
@@ -501,6 +585,7 @@ WORKFLOW_REGISTRY: Dict[str, Callable] = {
     "modality_ta": multimodal_ta_workflow,
     "modality_tva": multimodal_tva_workflow,
     "tva_theory": multimodal_tva_theory_workflow,
+    "tva_theory_soft": multimodal_tva_theory_soft_workflow,
 }
 
 
