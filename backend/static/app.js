@@ -10,7 +10,8 @@ const state = {
     selectedUtteranceIndex: -1,
     emotionLabels: [],
     chartInstance: null,
-    streamController: null
+    streamController: null,
+    retryCount: 0
 };
 
 // ── DOM Elements ─────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ const el = {
     uttGt: document.getElementById('utt-gt'),
     sourceBadge: document.getElementById('source-badge'),
     mediaWrapper: document.getElementById('media-wrapper'),
-    
+
     // Configurations
     modelPresetSelect: document.getElementById('model-preset-select'),
     providerSelect: document.getElementById('provider-select'),
@@ -38,11 +39,11 @@ const el = {
     maxTokensInput: document.getElementById('max-tokens-input'),
     reasoningMaxTokensInput: document.getElementById('reasoning-max-tokens-input'),
     runBtn: document.getElementById('run-btn'),
-    
+
     // Outputs
     agentTabsBar: document.getElementById('agent-tabs-bar'),
     agentPanesContainer: document.getElementById('agent-panes-container'),
-    
+
     // Evaluation
     evalGt: document.getElementById('eval-gt'),
     evalPred: document.getElementById('eval-pred'),
@@ -94,11 +95,11 @@ function setupEventListeners() {
         fetchDialogues(state.selectedDataset);
         updateEmotionLabels();
     });
-    
+
     el.dialogueSearch.addEventListener('input', () => {
         renderDialogueList();
     });
-    
+
     // Bind configuration sliders
     el.windowSlider.addEventListener('input', (e) => {
         el.windowVal.textContent = e.target.value;
@@ -106,13 +107,13 @@ function setupEventListeners() {
     el.tempSlider.addEventListener('input', (e) => {
         el.tempVal.textContent = parseFloat(e.target.value).toFixed(1);
     });
-    
+
     // Modality and label mode updates
     el.modelPresetSelect.addEventListener('change', updateConfigPresets);
     document.querySelectorAll('input[name="label_mode"]').forEach(radio => {
         radio.addEventListener('change', updateConfigPresets);
     });
-    
+
     // Execute Button
     el.runBtn.addEventListener('click', runProbe);
 
@@ -122,7 +123,7 @@ function setupEventListeners() {
             const targetTab = btn.getAttribute('data-tab');
             document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(pane => pane.classList.add('hidden'));
-            
+
             btn.classList.add('active');
             document.getElementById(targetTab).classList.remove('hidden');
         });
@@ -134,7 +135,7 @@ async function fetchDatasets() {
     try {
         const resp = await fetch('/datasets');
         state.datasets = await resp.json();
-        
+
         el.datasetSelect.innerHTML = '<option value="" disabled selected>Select a dataset...</option>';
         state.datasets.forEach(ds => {
             if (ds.status === 'ready') {
@@ -163,30 +164,30 @@ async function fetchDialogues(datasetId) {
 function renderDialogueList() {
     const query = el.dialogueSearch.value.toLowerCase().trim();
     const filtered = state.dialogues.filter(d => d.id.toLowerCase().includes(query));
-    
+
     el.dialogueList.innerHTML = '';
-    
+
     if (filtered.length === 0) {
         el.dialogueList.innerHTML = '<div class="list-item"><span class="item-id">No matches</span></div>';
         return;
     }
-    
+
     filtered.forEach(d => {
         const item = document.createElement('div');
         item.className = 'list-item';
         if (d.id === state.selectedDialogueId) item.classList.add('selected');
-        
+
         item.innerHTML = `
             <span class="item-id">${d.id}</span>
             <span class="item-desc">${d.turns} turns — ${d.first_line}</span>
         `;
-        
+
         item.addEventListener('click', () => {
             document.querySelectorAll('#dialogue-list .list-item').forEach(li => li.classList.remove('selected'));
             item.classList.add('selected');
             loadDialogueDetails(d.id);
         });
-        
+
         el.dialogueList.appendChild(item);
     });
 }
@@ -196,12 +197,12 @@ async function loadDialogueDetails(dialogueId) {
         state.selectedDialogueId = dialogueId;
         const resp = await fetch(`/dialogue/${state.selectedDataset}/${dialogueId}`);
         state.dialogueContent = await resp.json();
-        
+
         // Select target index if specified, otherwise the last turn
-        let defaultTargetIdx = state.dialogueContent.target_index !== undefined ? 
-            state.dialogueContent.target_index : 
+        let defaultTargetIdx = state.dialogueContent.target_index !== undefined ?
+            state.dialogueContent.target_index :
             state.dialogueContent.utterances.length - 1;
-            
+
         renderHistoryList(defaultTargetIdx);
         selectUtterance(defaultTargetIdx);
     } catch (err) {
@@ -212,34 +213,34 @@ async function loadDialogueDetails(dialogueId) {
 function renderHistoryList(targetIndex) {
     el.historyList.innerHTML = '';
     const utts = state.dialogueContent.utterances;
-    
+
     // Set window bounds to highlight context
     const windowSize = parseInt(el.windowSlider.value);
     const startContext = Math.max(0, targetIndex - windowSize);
-    
+
     utts.forEach((u, idx) => {
         const item = document.createElement('div');
         item.className = 'history-item';
-        
+
         if (idx === targetIndex) {
             item.classList.add('target-selected');
         } else if (idx >= startContext && idx < targetIndex) {
             item.classList.add('context-selected');
         }
-        
+
         const shortEmotion = unifyLabel(u.emotion);
         const emotionClass = EMOTION_CLASSES[shortEmotion.toLowerCase()] || '';
-        
+
         item.innerHTML = `
             <span class="item-meta">${u.speaker} (${idx})</span>
             <span class="item-text" title="${u.text}">${u.text}</span>
             <span class="emotion-badge-gt ${emotionClass}">${shortEmotion}</span>
         `;
-        
+
         item.addEventListener('click', () => {
             selectUtterance(idx);
         });
-        
+
         el.historyList.appendChild(item);
     });
 }
@@ -248,55 +249,55 @@ function selectUtterance(index) {
     state.selectedUtteranceIndex = index;
     const utts = state.dialogueContent.utterances;
     const u = utts[index];
-    
+
     el.uttSpeaker.textContent = `Speaker: ${u.speaker} (Turn ${index})`;
     el.uttText.textContent = u.text;
-    
+
     const uniGt = unifyLabel(u.emotion);
     el.uttGt.textContent = uniGt;
     // Clear old emotion classes and add new one
     el.uttGt.className = 'emotion-badge-gt';
     const emotionClass = EMOTION_CLASSES[uniGt.toLowerCase()];
     if (emotionClass) el.uttGt.classList.add(emotionClass);
-    
+
     // Update active highlights in dialogue history
     renderHistoryList(index);
-    
+
     // Source identifier
     const isMeld = state.selectedDataset.toLowerCase().includes('meld');
     el.sourceBadge.textContent = isMeld ? 'MELD' : 'IEMOCAP';
-    
+
     // Media Player Rendering
     renderMediaPlayer(u, isMeld);
-    
+
     // Update summary expectations
     el.evalGt.textContent = uniGt;
     el.evalGt.className = 'v-val badge-gt-big';
     if (emotionClass) el.evalGt.classList.add(emotionClass);
-    
+
     el.evalPred.textContent = '-';
     el.evalPred.className = 'v-val badge-pred-big';
-    
+
     el.evalMatchIndicator.className = 'verdict-match';
     el.evalMatchIndicator.innerHTML = '<span class="match-icon-placeholder">-</span>';
     el.evalStatusText.textContent = 'Ready';
     el.evalJsd.textContent = '-';
-    
+
     updateChart(null, u.soft_labels || null);
 }
 
 function renderMediaPlayer(utterance, isMeld) {
     const playerWrapper = el.mediaWrapper.querySelector('.player-container');
     playerWrapper.innerHTML = '';
-    
+
     const videoPath = utterance.video_path;
     const audioPath = utterance.audio_path;
-    
+
     if (!videoPath && !audioPath) {
         playerWrapper.innerHTML = '<div class="media-placeholder">No media paths available</div>';
         return;
     }
-    
+
     if (isMeld) {
         // MELD has native MP4 video clips
         if (videoPath) {
@@ -357,7 +358,7 @@ function toggleAdvancedConfig() {
 function updateConfigPresets() {
     const modality = el.modelPresetSelect.value;
     const labelMode = getSelectedLabelMode();
-    
+
     // Auto-update template settings based on thesis baselines
     if (modality === 'mono_t') {
         el.modelIdInput.value = 'google/gemini-2.5-flash-lite';
@@ -424,20 +425,25 @@ async function runProbe() {
         alert('Please choose an utterance to probe first!');
         return;
     }
-    
+
+    state.retryCount = 0;
+    clearConsole();
+    await executeProbe();
+}
+
+async function executeProbe() {
     // Terminate any active streams
     if (state.streamController) {
         state.streamController.abort();
     }
-    
-    clearConsole();
+
     el.runBtn.disabled = true;
     el.runBtn.textContent = 'Executing...';
-    
+
     const datasetId = state.selectedDataset;
     const dialogueId = state.selectedDialogueId;
     const targetIdx = state.selectedUtteranceIndex;
-    
+
     const modality = el.modelPresetSelect.value;
     const labelMode = getSelectedLabelMode();
     const provider = el.providerSelect.value;
@@ -448,103 +454,163 @@ async function runProbe() {
     const frames = parseInt(el.framesInput.value);
     const maxTokens = el.maxTokensInput ? parseInt(el.maxTokensInput.value) : null;
     const reasoningMaxTokens = el.reasoningMaxTokensInput ? parseInt(el.reasoningMaxTokensInput.value) : null;
-    
+
     const isAgentic = (modality === 'agentic');
     const isSoft = (labelMode === 'soft');
-    
-    state.streamController = new AbortController();
-    
-    try {
-        // Auto-switch to the Real-time Stream Console tab
-        const consoleTabBtn = document.querySelector('.main-tab-btn[data-tab="tab-console"]');
-        if (consoleTabBtn) consoleTabBtn.click();
 
-        if (isAgentic) {
-            // MULTI-AGENT RESOLVER ROUTE
-            const workflow = isSoft ? 'tva_theory_soft' : 'tva_theory';
-            
-            const payload = {
-                dataset_name: datasetId,
-                dialogue_id: dialogueId,
-                target_index: targetIdx,
-                model_id: modelId,
-                provider: provider,
-                window_size: windowSize,
-                template_name: 'erc_default',
-                workflow: workflow,
-                vision_frames: frames,
-                soft_label: isSoft,
-                max_tokens: maxTokens,
-                reasoning_max_tokens: reasoningMaxTokens
-            };
-            
-            const resp = await fetch('/agent/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                signal: state.streamController.signal
-            });
-            
-            await readAgentStream(resp.body);
-            
-        } else {
-            // SINGLE MODALITY / MONOLITHIC ROUTE
-            const payload = {
-                dataset_name: datasetId,
-                dialogue_id: dialogueId,
-                target_index: targetIdx,
-                model_id: modelId,
-                provider: provider,
-                window_size: windowSize,
-                soft_label: isSoft,
-                stream: true,
-                template_name: activeTemplatePreset,
-                disable_thinking: disableThinking,
-                include_video: (modality === 'mono_v' || modality === 'mono_tva'),
-                include_audio: (modality === 'mono_a' || modality === 'mono_tva'),
-                vision_frames: frames,
-                max_tokens: maxTokens,
-                reasoning_max_tokens: reasoningMaxTokens
-            };
-            
-            const resp = await fetch('/inference', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                signal: state.streamController.signal
-            });
-            
-            await readMonolithicStream(resp.body);
+    // Auto-switch to the Real-time Stream Console tab
+    const consoleTabBtn = document.querySelector('.main-tab-btn[data-tab="tab-console"]');
+    if (consoleTabBtn) consoleTabBtn.click();
+
+    while (state.retryCount <= 3) {
+        let watchdog = null;
+        let isTimeout = false;
+
+        const clearWatchdog = () => {
+            if (watchdog) {
+                clearTimeout(watchdog);
+                watchdog = null;
+            }
+        };
+
+        const startWatchdog = () => {
+            clearWatchdog();
+            watchdog = setTimeout(() => {
+                isTimeout = true;
+                console.warn("Watchdog timeout: 10 seconds without new chunk.");
+                if (state.streamController) {
+                    state.streamController.abort();
+                }
+            }, 10000);
+        };
+
+        state.streamController = new AbortController();
+
+        try {
+            // Start watchdog initial timer
+            startWatchdog();
+
+            if (isAgentic) {
+                // MULTI-AGENT RESOLVER ROUTE
+                const workflow = isSoft ? 'tva_soft' : 'tva_theory';
+
+                const payload = {
+                    dataset_name: datasetId,
+                    dialogue_id: dialogueId,
+                    target_index: targetIdx,
+                    model_id: modelId,
+                    provider: provider,
+                    window_size: windowSize,
+                    template_name: 'erc_default',
+                    workflow: workflow,
+                    vision_frames: frames,
+                    soft_label: isSoft,
+                    max_tokens: maxTokens,
+                    reasoning_max_tokens: reasoningMaxTokens
+                };
+
+                const resp = await fetch('/agent/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: state.streamController.signal
+                });
+
+                await readAgentStream(resp.body, startWatchdog);
+
+            } else {
+                // SINGLE MODALITY / MONOLITHIC ROUTE
+                const payload = {
+                    dataset_name: datasetId,
+                    dialogue_id: dialogueId,
+                    target_index: targetIdx,
+                    model_id: modelId,
+                    provider: provider,
+                    window_size: windowSize,
+                    soft_label: isSoft,
+                    stream: true,
+                    template_name: activeTemplatePreset,
+                    disable_thinking: disableThinking,
+                    include_video: (modality === 'mono_v' || modality === 'mono_tva'),
+                    include_audio: (modality === 'mono_a' || modality === 'mono_tva'),
+                    vision_frames: frames,
+                    max_tokens: maxTokens,
+                    reasoning_max_tokens: reasoningMaxTokens
+                };
+
+                const resp = await fetch('/inference', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: state.streamController.signal
+                });
+
+                await readMonolithicStream(resp.body, startWatchdog);
+            }
+
+            // If we successfully finished without timeout, we break the retry loop!
+            clearWatchdog();
+            break;
+
+        } catch (err) {
+            clearWatchdog();
+
+            // Check if this error was caused by our timeout abort
+            if (isTimeout || (err.name === 'AbortError' && isTimeout)) {
+                if (state.retryCount < 3) {
+                    state.retryCount++;
+                    const activeAgentTab = el.agentTabsBar.querySelector('.agent-tab-btn.active-streaming');
+                    const activeAgentName = activeAgentTab ? activeAgentTab.getAttribute('data-agent') : (isAgentic ? 'TextAgent' : 'Monolithic Model');
+                    const agentObj = getOrCreateAgentTab(activeAgentName);
+
+                    const retryMsg = `\n\n⚠️ [TIMEOUT] No data received for 10s. Retrying (${state.retryCount}/3)...\n\n`;
+                    appendStreamChunk(agentObj, retryMsg);
+
+                    // Delay 1.5 seconds before retrying to let server clear
+                    await new Promise(r => setTimeout(r, 1500));
+                    continue;
+                } else {
+                    const activeAgentTab = el.agentTabsBar.querySelector('.agent-tab-btn.active-streaming');
+                    const activeAgentName = activeAgentTab ? activeAgentTab.getAttribute('data-agent') : (isAgentic ? 'TextAgent' : 'Monolithic Model');
+                    const agentObj = getOrCreateAgentTab(activeAgentName);
+                    appendStreamChunk(agentObj, `\n\n❌ [TIMEOUT] No data received for 10s. Maximum retries reached (3/3).\n\n`);
+                    el.evalStatusText.textContent = 'Execution Timeout';
+                    break;
+                }
+            } else {
+                // If it's a real abort from user clicking Run again
+                if (err.name === 'AbortError') {
+                    break;
+                }
+                console.error(err);
+                el.evalStatusText.textContent = 'Execution Error';
+                break;
+            }
         }
-    } catch (err) {
-        if (err.name !== 'AbortError') {
-            console.error(err);
-            el.evalStatusText.textContent = 'Execution Error';
-        }
-    } finally {
-        el.runBtn.disabled = false;
-        el.runBtn.textContent = 'Run Thesis Probe';
-        state.streamController = null;
     }
+
+    el.runBtn.disabled = false;
+    el.runBtn.textContent = 'Run Thesis Probe';
+    state.streamController = null;
 }
 
 // ── Stream Readers ───────────────────────────────────────────────────────────
 function getOrCreateAgentTab(agentName) {
     let tab = el.agentTabsBar.querySelector(`.agent-tab-btn[data-agent="${agentName}"]`);
     let pane = el.agentPanesContainer.querySelector(`.agent-pane[data-agent="${agentName}"]`);
-    
+
     if (!tab) {
         // Clear placeholder message if it exists
         const placeholder = el.agentPanesContainer.querySelector('.console-placeholder-msg');
         if (placeholder) placeholder.remove();
-        
+
         // Create tab button
         tab = document.createElement('button');
         tab.className = 'agent-tab-btn';
         tab.setAttribute('data-agent', agentName);
         tab.innerHTML = `<span class="status-dot"></span> <span>${agentName}</span>`;
         el.agentTabsBar.appendChild(tab);
-        
+
         // Create pane
         pane = document.createElement('div');
         pane.className = 'agent-pane hidden';
@@ -562,30 +628,30 @@ function getOrCreateAgentTab(agentName) {
             </div>
         `;
         el.agentPanesContainer.appendChild(pane);
-        
+
         // Bind sub-tab click events
         pane.querySelectorAll('.sub-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const subtabVal = btn.getAttribute('data-subtab');
                 pane.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.remove('active'));
                 pane.querySelectorAll('.sub-tab-content').forEach(c => c.classList.add('hidden'));
-                
+
                 btn.classList.add('active');
                 pane.querySelector(`.sub-tab-content[data-subtab="${subtabVal}"]`).classList.remove('hidden');
             });
         });
-        
+
         // Bind click event to tab button
         tab.addEventListener('click', () => {
             selectAgentTab(agentName);
         });
-        
+
         // If this is the first tab, activate it
         if (el.agentTabsBar.querySelectorAll('.agent-tab-btn').length === 1) {
             selectAgentTab(agentName);
         }
     }
-    
+
     return {
         tab: tab,
         pane: pane,
@@ -598,7 +664,7 @@ function selectAgentTab(agentName) {
     // Deactivate all agent tabs and panes
     el.agentTabsBar.querySelectorAll('.agent-tab-btn').forEach(btn => btn.classList.remove('active'));
     el.agentPanesContainer.querySelectorAll('.agent-pane').forEach(p => p.classList.add('hidden'));
-    
+
     // Activate target agent tab and pane
     const tab = el.agentTabsBar.querySelector(`.agent-tab-btn[data-agent="${agentName}"]`);
     const pane = el.agentPanesContainer.querySelector(`.agent-pane[data-agent="${agentName}"]`);
@@ -606,29 +672,125 @@ function selectAgentTab(agentName) {
     if (pane) pane.classList.remove('hidden');
 }
 
-async function readMonolithicStream(bodyStream) {
+function appendStreamChunk(agentObj, chunkText) {
+    const responseBody = agentObj.responseBody;
+    if (!responseBody.streamState) {
+        // Initialize state
+        responseBody.innerHTML = '';
+        let initialContainer = document.createElement('div');
+        initialContainer.className = 'final-response-content';
+        responseBody.appendChild(initialContainer);
+
+        responseBody.streamState = {
+            inThinking: false,
+            currentContainer: initialContainer,
+            activeTextContainer: initialContainer,
+            detailsEl: null,
+            thinkingBodyEl: null,
+            buffer: ''
+        };
+    }
+
+    let state = responseBody.streamState;
+    state.buffer += chunkText;
+
+    while (true) {
+        if (!state.inThinking) {
+            const idx = state.buffer.indexOf('<thought>');
+            if (idx === -1) {
+                if (state.buffer) {
+                    state.currentContainer.appendChild(document.createTextNode(state.buffer));
+                    state.buffer = '';
+                }
+                break;
+            } else {
+                const before = state.buffer.substring(0, idx);
+                if (before) {
+                    state.currentContainer.appendChild(document.createTextNode(before));
+                }
+                state.buffer = state.buffer.substring(idx + '<thought>'.length);
+                state.inThinking = true;
+
+                // Create collapsible thought details block
+                state.detailsEl = document.createElement('details');
+                state.detailsEl.className = 'thinking-dropdown';
+                state.detailsEl.open = true; // Open by default while streaming
+
+                let summaryEl = document.createElement('summary');
+                summaryEl.textContent = 'Thinking Process (Click to toggle)';
+                state.detailsEl.appendChild(summaryEl);
+
+                state.thinkingBodyEl = document.createElement('pre');
+                state.thinkingBodyEl.className = 'thinking-content';
+                state.detailsEl.appendChild(state.thinkingBodyEl);
+
+                // Toggle details open/close state manually when clicking inside the dropdown content
+                state.detailsEl.addEventListener('click', (e) => {
+                    if (e.target.tagName.toLowerCase() === 'summary') {
+                        return; // Let native summary toggle trigger natively
+                    }
+                    e.preventDefault(); // Prevent standard details element default behaviour if clicking content
+                    state.detailsEl.open = !state.detailsEl.open;
+                });
+
+                responseBody.appendChild(state.detailsEl);
+                state.currentContainer = state.thinkingBodyEl;
+            }
+        } else {
+            const idx = state.buffer.indexOf('</thought>');
+            if (idx === -1) {
+                if (state.buffer) {
+                    state.currentContainer.appendChild(document.createTextNode(state.buffer));
+                    state.buffer = '';
+                }
+                break;
+            } else {
+                const inBetween = state.buffer.substring(0, idx);
+                if (inBetween) {
+                    state.currentContainer.appendChild(document.createTextNode(inBetween));
+                }
+                state.buffer = state.buffer.substring(idx + '</thought>'.length);
+                state.inThinking = false;
+
+                // Create new text block container under main responseBody
+                state.activeTextContainer = document.createElement('div');
+                state.activeTextContainer.className = 'final-response-content';
+                responseBody.appendChild(state.activeTextContainer);
+                state.currentContainer = state.activeTextContainer;
+            }
+        }
+    }
+
+    responseBody.scrollTop = responseBody.scrollHeight;
+}
+
+async function readMonolithicStream(bodyStream, onChunk) {
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder();
-    
+
     let buffer = '';
     let systemPrompt = '';
     let userPrompt = '';
-    
+
     let promptParsed = false;
-    let inThinking = false;
-    
+
     const agentName = 'Monolithic Model';
     const agentObj = getOrCreateAgentTab(agentName);
-    
+
     agentObj.tab.classList.add('active-streaming');
-    agentObj.responseBody.textContent = '';
-    
+    agentObj.responseBody.streamState = null; // Reset parsing state
+    agentObj.responseBody.innerHTML = '';
+
+    if (onChunk) onChunk();
+
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
+        if (onChunk) onChunk();
+
         buffer += decoder.decode(value, { stream: true });
-        
+
         // Extract prompts if present
         if (!promptParsed) {
             const systemMatch = buffer.match(/<system>(.*?)<\/system>/s);
@@ -641,101 +803,77 @@ async function readMonolithicStream(bodyStream) {
                 userPrompt = userMatch[1];
                 buffer = buffer.replace(/<prompt>.*?<\/prompt>/s, '');
                 promptParsed = true;
-                
+
                 // Update prompt box
                 agentObj.promptBody.textContent = `[SYSTEM INSTRUCTIONS]:\n${systemPrompt.trim()}\n\n[USER DIALOGUE PAYLOAD]:\n${userPrompt.trim()}`;
             }
         }
-        
+
         if (promptParsed) {
-            // Process tags within response
-            while (true) {
-                if (!inThinking) {
-                    const idx = buffer.indexOf('<thought>');
-                    if (idx === -1) {
-                        // Safely print answer characters
-                        const clean = buffer;
-                        buffer = '';
-                        if (clean) {
-                            agentObj.responseBody.textContent += clean;
-                            agentObj.responseBody.scrollTop = agentObj.responseBody.scrollHeight;
-                        }
-                        break;
-                    } else {
-                        // Flush text before thought
-                        const before = buffer.substring(0, idx);
-                        if (before) agentObj.responseBody.textContent += before;
-                        buffer = buffer.substring(idx + '<thought>'.length);
-                        inThinking = true;
-                        
-                        agentObj.responseBody.textContent += "\n[REASONING PATH]:\n";
-                    }
-                } else {
-                    const idx = buffer.indexOf('</thought>');
-                    if (idx === -1) {
-                        // Append to thought
-                        const clean = buffer;
-                        buffer = '';
-                        if (clean) {
-                            agentObj.responseBody.textContent += clean;
-                            agentObj.responseBody.scrollTop = agentObj.responseBody.scrollHeight;
-                        }
-                        break;
-                    } else {
-                        const inBetween = buffer.substring(0, idx);
-                        if (inBetween) agentObj.responseBody.textContent += inBetween;
-                        buffer = buffer.substring(idx + '</thought>'.length);
-                        inThinking = false;
-                        agentObj.responseBody.textContent += "\n\n[FINAL RESPONSE]:\n";
-                    }
-                }
+            if (buffer) {
+                appendStreamChunk(agentObj, buffer);
+                buffer = '';
             }
         }
     }
-    
+
     // Flush remaining buffer
     if (buffer) {
-        agentObj.responseBody.textContent += buffer;
+        appendStreamChunk(agentObj, buffer);
     }
-    
+
     agentObj.tab.classList.remove('active-streaming');
     agentObj.tab.classList.add('done-streaming');
-    
-    evaluateSingleRunOutput(agentObj.responseBody.textContent);
+
+    // Extract clean final response text (excluding thoughts) for evaluation
+    let finalAnswer = '';
+    agentObj.responseBody.querySelectorAll('.final-response-content').forEach(c => {
+        finalAnswer += c.textContent;
+    });
+    if (!finalAnswer) {
+        finalAnswer = agentObj.responseBody.textContent;
+    }
+    evaluateSingleRunOutput(finalAnswer.trim());
 }
 
-async function readAgentStream(bodyStream) {
+async function readAgentStream(bodyStream, onChunk) {
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder();
-    
+
     let buffer = '';
-    
+
+    if (onChunk) onChunk();
+
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
+        if (onChunk) onChunk();
+
         buffer += decoder.decode(value, { stream: true });
-        
+
         const lines = buffer.split('\n');
         // Keep the last partial line in buffer
         buffer = lines.pop();
-        
+
         for (const line of lines) {
             if (!line.trim()) continue;
             try {
                 const ev = JSON.parse(line);
                 const agent = ev.agent;
                 const event = ev.event;
-                
+
                 if (agent) {
                     const agentObj = getOrCreateAgentTab(agent);
-                    
+
                     if (event === 'prompt') {
                         // Set active and inject prompts
                         selectAgentTab(agent);
-                        
+
                         agentObj.tab.classList.add('active-streaming');
-                        
+                        agentObj.responseBody.streamState = null; // Reset parsing state
+                        agentObj.responseBody.innerHTML = '';
+
                         const msgs = ev.messages || [];
                         const systemMsg = msgs.find(m => m.role === 'system');
                         const userMsg = msgs.find(m => m.role === 'user');
@@ -752,30 +890,32 @@ async function readAgentStream(bodyStream) {
                         }
                         agentObj.promptBody.textContent = promptText || '(No prompt context)';
                     } else if (event === 'chunk') {
-                        // Append text
-                        agentObj.responseBody.textContent += ev.text;
-                        agentObj.responseBody.scrollTop = agentObj.responseBody.scrollHeight;
+                        // Append text through collapsible parser
+                        appendStreamChunk(agentObj, ev.text);
                     } else if (event === 'done') {
                         agentObj.tab.classList.remove('active-streaming');
                         agentObj.tab.classList.add('done-streaming');
+                        if (ev.full && !agentObj.responseBody.streamState) {
+                            appendStreamChunk(agentObj, ev.full);
+                        }
                     }
                 }
-                
+
                 if (event === 'final') {
                     // Update final labels
                     const pred = unifyLabel(ev.label);
                     const gt = unifyLabel(state.dialogueContent.utterances[state.selectedUtteranceIndex].emotion);
-                    
+
                     el.evalPred.textContent = pred;
                     el.evalPred.className = 'v-val badge-pred-big';
                     const predClass = EMOTION_CLASSES[pred.toLowerCase()];
                     if (predClass) el.evalPred.classList.add(predClass);
-                    
+
                     const isMatch = (pred.toLowerCase() === gt.toLowerCase());
                     el.evalMatchIndicator.className = isMatch ? 'verdict-match match' : 'verdict-match mismatch';
                     el.evalMatchIndicator.innerHTML = isMatch ? '✓' : '✗';
                     el.evalStatusText.textContent = isMatch ? 'Match' : 'Mismatch';
-                    
+
                     if (ev.soft_labels) {
                         // It was a soft resolver workflow
                         const parsedSoft = ev.soft_labels;
@@ -804,10 +944,10 @@ function clearConsole() {
 function evaluateSingleRunOutput(rawText) {
     const gt = unifyLabel(state.dialogueContent.utterances[state.selectedUtteranceIndex].emotion);
     const isSoft = (getSelectedLabelMode() === 'soft');
-    
+
     let pred = '';
     let predSoft = null;
-    
+
     if (isSoft) {
         predSoft = parseSoftLabels(rawText, state.emotionLabels);
         if (predSoft) {
@@ -818,19 +958,19 @@ function evaluateSingleRunOutput(rawText) {
     } else {
         pred = normalizePrediction(rawText, state.emotionLabels);
     }
-    
+
     pred = unifyLabel(pred);
-    
+
     el.evalPred.textContent = pred || 'Unknown';
     el.evalPred.className = 'v-val badge-pred-big';
     const predClass = EMOTION_CLASSES[pred.toLowerCase()];
     if (predClass) el.evalPred.classList.add(predClass);
-    
+
     const isMatch = (pred.toLowerCase() === gt.toLowerCase());
     el.evalMatchIndicator.className = isMatch ? 'verdict-match match' : 'verdict-match mismatch';
     el.evalMatchIndicator.innerHTML = isMatch ? '✓' : '✗';
     el.evalStatusText.textContent = isMatch ? 'Match' : 'Mismatch';
-    
+
     if (isSoft && predSoft) {
         const gtSoft = state.dialogueContent.utterances[state.selectedUtteranceIndex].soft_labels || null;
         const jsd = calculateJSD(predSoft, gtSoft || {});
@@ -845,7 +985,7 @@ function evaluateSingleRunOutput(rawText) {
 // JS client side parser replicating backend utils.py
 function normalizePrediction(raw, validLabels) {
     const rawClean = raw.trim();
-    
+
     // 1. Check "Emotion: <label>"
     const match = rawClean.match(/Emotion:\s*[*_`"']*([a-zA-Z]+)/i);
     if (match) {
@@ -853,7 +993,7 @@ function normalizePrediction(raw, validLabels) {
         const found = validLabels.find(l => l.toLowerCase() === candidate);
         if (found) return found;
     }
-    
+
     // 2. Check last line
     const lines = rawClean.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length > 0) {
@@ -861,14 +1001,14 @@ function normalizePrediction(raw, validLabels) {
         const found = validLabels.find(l => l.toLowerCase() === lastLine);
         if (found) return found;
     }
-    
+
     // 3. Containment matching
     const rawLower = rawClean.replace(/[*_`"'.]/g, '').toLowerCase();
     for (const label of validLabels) {
         const regex = new RegExp(`\\b${label.toLowerCase()}\\b`, 'i');
         if (regex.test(rawLower)) return label;
     }
-    
+
     return rawClean.substring(0, 15);
 }
 
@@ -876,7 +1016,7 @@ function parseSoftLabels(text, validLabels) {
     try {
         const cleanText = text.trim();
         let dictStr = "";
-        
+
         const blockMatch = cleanText.match(/Soft\s*Labels\s*[:\s]*({.+?})/is);
         if (blockMatch) {
             dictStr = blockMatch[1];
@@ -888,7 +1028,7 @@ function parseSoftLabels(text, validLabels) {
                 dictStr = cleanText;
             }
         }
-        
+
         let data = {};
         try {
             data = JSON.parse(dictStr);
@@ -898,17 +1038,17 @@ function parseSoftLabels(text, validLabels) {
                 data[p[1]] = parseFloat(p[2]);
             });
         }
-        
+
         const result = {};
         let total = 0;
-        
+
         validLabels.forEach(label => {
             const key = Object.keys(data).find(k => k.toLowerCase() === label.toLowerCase());
             const val = key !== undefined ? parseFloat(data[key]) : 0.0;
             result[label.toLowerCase()] = Math.max(0.0, isNaN(val) ? 0.0 : val);
             total += result[label.toLowerCase()];
         });
-        
+
         if (total > 0) {
             for (let label in result) {
                 result[label] /= total;
@@ -929,14 +1069,14 @@ function normalizeDistribution(dist, labels) {
     if (!dist) return null;
     const result = {};
     let total = 0.0;
-    
+
     labels.forEach(label => {
         const key = Object.keys(dist).find(k => unifyLabel(k).toLowerCase() === label.toLowerCase());
         const val = key !== undefined ? parseFloat(dist[key]) : 0.0;
         result[label.toLowerCase()] = Math.max(0.0, isNaN(val) ? 0.0 : val);
         total += result[label.toLowerCase()];
     });
-    
+
     if (total > 0) {
         for (let label in result) {
             result[label] /= total;
@@ -950,14 +1090,14 @@ function calculateJSD(pDist, gDist) {
     const labels = state.emotionLabels;
     const pNorm = normalizeDistribution(pDist, labels);
     const gNorm = normalizeDistribution(gDist, labels);
-    
+
     if (!pNorm || !gNorm) return 0.0;
-    
+
     const p = labels.map(l => pNorm[l.toLowerCase()] || 0.0);
     const g = labels.map(l => gNorm[l.toLowerCase()] || 0.0);
-    
+
     const m = p.map((x, idx) => 0.5 * (x + g[idx]));
-    
+
     const kld = (a, b) => {
         return a.reduce((sum, val, idx) => {
             if (val > 0) {
@@ -966,7 +1106,7 @@ function calculateJSD(pDist, gDist) {
             return sum;
         }, 0);
     };
-    
+
     const jsd = 0.5 * kld(p, m) + 0.5 * kld(g, m);
     return Math.max(0.0, jsd);
 }
@@ -1021,24 +1161,24 @@ function initChart() {
 
 function updateChart(predDist, gtDist) {
     if (!state.chartInstance) return;
-    
+
     const labels = state.emotionLabels;
     state.chartInstance.data.labels = labels.map(l => l.charAt(0).toUpperCase() + l.slice(1));
-    
+
     const normPred = predDist ? normalizeDistribution(predDist, labels) : null;
     const normGt = gtDist ? normalizeDistribution(gtDist, labels) : null;
-    
+
     if (normPred) {
         state.chartInstance.data.datasets[0].data = labels.map(l => normPred[l.toLowerCase()] || 0.0);
     } else {
         state.chartInstance.data.datasets[0].data = [];
     }
-    
+
     if (normGt) {
         state.chartInstance.data.datasets[1].data = labels.map(l => normGt[l.toLowerCase()] || 0.0);
     } else {
         state.chartInstance.data.datasets[1].data = [];
     }
-    
+
     state.chartInstance.update();
 }

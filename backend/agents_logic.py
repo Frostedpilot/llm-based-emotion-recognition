@@ -120,7 +120,20 @@ async def run_agent_step(
             ) + "\n"
             return
 
-        for chunk in stream:
+        # Iterate over the synchronous stream using run_in_executor to avoid blocking the event loop
+        def get_next_chunk(stream_iter):
+            try:
+                return next(stream_iter)
+            except StopIteration:
+                return None
+
+        stream_iter = iter(stream)
+        while True:
+            chunk = await asyncio.get_event_loop().run_in_executor(
+                None, get_next_chunk, stream_iter
+            )
+            if chunk is None:
+                break
             full_response += chunk
             yield json.dumps(
                 {"agent": agent_name, "event": "chunk", "text": chunk}
@@ -286,6 +299,13 @@ async def run_multimodal_resolver_internal(
             "acoustic": "audio_only_soft_label_cot.txt",
             "resolver": "agent_resolver_theory_soft.txt",
         },
+        "tva_soft": {
+            "text": "erc_cot_soft_label.txt",
+            "vision_default": "vision_only_soft_label_cot.txt",
+            "vision_iemocap": "vision_only_soft_label_cot_iemocap.txt",
+            "acoustic": "audio_only_soft_label_cot.txt",
+            "resolver": "agent_resolver_soft.txt",
+        },
         "tva_theory": {
             "text": "erc_cot.txt",
             "vision_default": "vision_only_cot.txt",
@@ -439,6 +459,11 @@ async def multimodal_tva_theory_soft_workflow(messages, valid_emotions, model, p
         yield ev
 
 
+async def multimodal_tva_soft_workflow(messages, valid_emotions, model, provider, bridge, original_context):
+    async for ev in run_multimodal_resolver_internal(messages, valid_emotions, model, provider, bridge, original_context, "tva_soft"):
+        yield ev
+
+
 # ── Module API ───────────────────────────────────────────────────────────────
 
 WORKFLOW_REGISTRY: Dict[str, Callable] = {
@@ -449,6 +474,7 @@ WORKFLOW_REGISTRY: Dict[str, Callable] = {
     "modality_tva": multimodal_tva_workflow,
     "tva_theory": multimodal_tva_theory_workflow,
     "tva_theory_soft": multimodal_tva_theory_soft_workflow,
+    "tva_soft": multimodal_tva_soft_workflow,
 }
 
 

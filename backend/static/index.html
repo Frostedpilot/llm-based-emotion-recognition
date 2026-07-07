@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,24 +8,23 @@
     <!-- Outfit and Inter Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <!-- Chart.js CDN for distribution graphics -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="app-container">
-        
+
         <!-- Sidebar: Navigation and selectors -->
         <aside class="sidebar glass">
             <div class="sidebar-header">
-                <div class="logo">
-                    <span class="logo-icon">⚡</span>
-                    <h2>FrostedPilot</h2>
-                </div>
                 <p class="subtitle">Emotion Recognition Bench</p>
             </div>
-            
+
             <div class="sidebar-section">
                 <h3>1. Select Dataset</h3>
                 <div class="select-wrapper">
@@ -33,7 +33,7 @@
                     </select>
                 </div>
             </div>
-            
+
             <div class="sidebar-section">
                 <h3>2. Select Dialogue</h3>
                 <div class="search-box">
@@ -45,7 +45,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="sidebar-section flexible-section">
                 <h3>3. Dialogue History & Target</h3>
                 <p class="section-help">Click any turn below to set it as target</p>
@@ -56,51 +56,53 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content Area -->
         <main class="main-content">
-            
+
             <!-- Header banner: Thesis summary info -->
             <header class="main-header glass">
                 <div class="header-left">
                     <h1>Thesis Demonstration Dashboard</h1>
                     <p>Research on Multimodal Emotion Recognition in Conversation using a Multi-Agent System on LLMs</p>
                 </div>
-                <div class="contributions-badges">
-                    <span class="contrib-badge" title="Pillar 1: Preserve emotional uncertainty">Soft Labels</span>
-                    <span class="contrib-badge" title="Pillar 2: Symbolic collaboration over dense fusion">Agentic Resolver</span>
-                    <span class="contrib-badge" title="Pillar 3: Native waveforms exceed manual features">Native Audio LLM</span>
-                </div>
             </header>
-            
+
             <!-- Main Content Tabs -->
             <div class="main-tabs">
                 <button class="main-tab-btn active" data-tab="tab-dashboard">📊 Playground & Config</button>
                 <button class="main-tab-btn" data-tab="tab-console">🖥️ Real-time Stream Console</button>
             </div>
-            
+
             <!-- Tab 1: Playground & Config & Evaluation -->
             <div id="tab-dashboard" class="tab-content active">
                 <div class="dashboard-grid">
-                    
+
                     <!-- Card: Selected Utterance & Media -->
                     <div class="card glass item-details-card">
                         <div class="card-header">
                             <h2>Utterance Details</h2>
                             <span class="badge" id="source-badge">MELD</span>
                         </div>
-                        
+
                         <div class="card-body">
                             <div class="utterance-bubble">
-                                <span class="speaker-label" id="utt-speaker">Speaker: -</span>
-                                <blockquote id="utt-text">Please select a dataset, dialogue, and utterance from the sidebar.</blockquote>
+                                <div class="bubble-meta"
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <span class="speaker-label" id="utt-speaker" style="margin-bottom: 0;">Speaker:
+                                        -</span>
+                                    <div class="bubble-gt"
+                                        style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                                        <span
+                                            style="color: var(--text-muted); font-size: 10px; text-transform: uppercase; font-weight: 500;">GT:</span>
+                                        <span class="emotion-badge-gt" id="utt-gt"
+                                            style="padding: 2px 8px; font-size: 10px; border-radius: 6px;">N/A</span>
+                                    </div>
+                                </div>
+                                <blockquote id="utt-text">Please select a dataset, dialogue, and utterance from the
+                                    sidebar.</blockquote>
                             </div>
-                            
-                            <div class="ground-truth-strip">
-                                <span>Ground Truth Label:</span>
-                                <span class="emotion-badge-gt" id="utt-gt">N/A</span>
-                            </div>
-                            
+
                             <div class="media-container" id="media-wrapper">
                                 <h3>Associated Media Clip</h3>
                                 <div class="player-container">
@@ -110,14 +112,14 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Card: Configurations -->
                     <div class="card glass config-card">
                         <div class="card-header">
                             <h2>Model Configurations</h2>
                         </div>
                         <div class="card-body config-form">
-                            
+
                             <div class="config-row">
                                 <div class="config-col">
                                     <label for="model-preset-select">Model Modality</label>
@@ -131,7 +133,7 @@
                                         </select>
                                     </div>
                                 </div>
-                                
+
                                 <div class="config-col">
                                     <label>Label Representation</label>
                                     <div class="radio-group">
@@ -146,7 +148,7 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="config-row">
                                 <div class="config-col">
                                     <label for="provider-select">Inference Provider</label>
@@ -157,20 +159,23 @@
                                         </select>
                                     </div>
                                 </div>
-                                
+
                                 <div class="config-col">
                                     <label for="model-id-input">Model ID</label>
-                                    <input type="text" id="model-id-input" value="google/gemini-2.5-flash-lite" placeholder="e.g. qwen3.5:4b">
+                                    <input type="text" id="model-id-input" value="google/gemini-2.5-flash-lite"
+                                        placeholder="e.g. qwen3.5:4b">
                                     <div class="preset-hints">
-                                        Presel: 
-                                        <span class="hint-tag" onclick="setModelId('google/gemini-2.5-flash-lite')">Gemini 2.5 L</span> |
-                                        <span class="hint-tag" onclick="setModelId('google/gemini-3.1-flash-lite')">Gemini 3.1 L</span> |
-                                        <span class="hint-tag" onclick="setModelId('qwen/qwen3.6-plus:free')">Qwen 3.6</span> |
-                                        <span class="hint-tag" onclick="setModelId('qwen3.5:4b')">qwen3.5:4b (Local)</span>
+                                        Presel:
+                                        <span class="hint-tag"
+                                            onclick="setModelId('google/gemini-2.5-flash-lite')">Gemini 2.5 L</span> |
+                                        <span class="hint-tag" onclick="setModelId('google/gemini-2.5-flash')">Gemini
+                                            2.5</span> |
+                                        <span class="hint-tag"
+                                            onclick="setModelId('google/gemini-3.1-flash-lite')">Gemini 3.1 L</span> |
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="collapsible-section">
                                 <button type="button" class="collapse-trigger" onclick="toggleAdvancedConfig()">
                                     <span>Advanced Parameters</span>
@@ -179,7 +184,8 @@
                                 <div class="collapse-content" id="advanced-config-panel">
                                     <div class="config-row">
                                         <div class="config-col">
-                                            <label for="window-slider">Context Window: <span id="window-val">5</span> turns</label>
+                                            <label for="window-slider">Context Window: <span id="window-val">5</span>
+                                                turns</label>
                                             <input type="range" id="window-slider" min="1" max="10" value="5">
                                         </div>
                                         <div class="config-col">
@@ -202,16 +208,18 @@
                                     <div class="config-row">
                                         <div class="config-col">
                                             <label for="max-tokens-input">Max Tokens</label>
-                                            <input type="number" id="max-tokens-input" min="1" max="100000" value="40000">
+                                            <input type="number" id="max-tokens-input" min="1" max="100000"
+                                                value="40000">
                                         </div>
                                         <div class="config-col">
                                             <label for="reasoning-max-tokens-input">Max Reasoning Tokens</label>
-                                            <input type="number" id="reasoning-max-tokens-input" min="1" max="100000" value="10000">
+                                            <input type="number" id="reasoning-max-tokens-input" min="1" max="100000"
+                                                value="10000">
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <button class="btn btn-primary btn-block glow-btn" id="run-btn">
                                 <span class="btn-icon">▶</span>
                                 <span>Run Thesis Probe</span>
@@ -219,7 +227,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Metrics and evaluation full-width card -->
                 <div class="full-width-grid">
                     <div class="card glass metrics-card">
@@ -227,31 +235,33 @@
                             <h2>Analytical Evaluation</h2>
                         </div>
                         <div class="card-body metrics-body">
-                            <div class="verdict-row">
-                                <div class="verdict-box">
-                                    <span class="v-label">Ground Truth</span>
-                                    <span class="v-val badge-gt-big" id="eval-gt">-</span>
+                            <div class="metrics-left-col">
+                                <div class="verdict-row">
+                                    <div class="verdict-box">
+                                        <span class="v-label">Ground Truth</span>
+                                        <span class="v-val badge-gt-big" id="eval-gt">-</span>
+                                    </div>
+                                    <div class="verdict-match" id="eval-match-indicator">
+                                        <span class="match-icon-placeholder">-</span>
+                                    </div>
+                                    <div class="verdict-box">
+                                        <span class="v-label">Model Prediction</span>
+                                        <span class="v-val badge-pred-big" id="eval-pred">-</span>
+                                    </div>
                                 </div>
-                                <div class="verdict-match" id="eval-match-indicator">
-                                    <span class="match-icon-placeholder">-</span>
-                                </div>
-                                <div class="verdict-box">
-                                    <span class="v-label">Model Prediction</span>
-                                    <span class="v-val badge-pred-big" id="eval-pred">-</span>
+
+                                <div class="metric-stats">
+                                    <div class="metric-badge">
+                                        <span class="m-title">Verdict</span>
+                                        <span class="m-val" id="eval-status-text">No Run</span>
+                                    </div>
+                                    <div class="metric-badge">
+                                        <span class="m-title">JS-Divergence</span>
+                                        <span class="m-val" id="eval-jsd">-</span>
+                                    </div>
                                 </div>
                             </div>
-                            
-                            <div class="metric-stats">
-                                <div class="metric-badge">
-                                    <span class="m-title">Verdict</span>
-                                    <span class="m-val" id="eval-status-text">No Run</span>
-                                </div>
-                                <div class="metric-badge">
-                                    <span class="m-title">JS-Divergence</span>
-                                    <span class="m-val" id="eval-jsd">-</span>
-                                </div>
-                            </div>
-                            
+
                             <div class="chart-container" id="chart-wrapper">
                                 <h3>Emotion Comparison Chart</h3>
                                 <div style="position: relative; height: 180px; width: 100%;">
@@ -262,7 +272,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Tab 2: Fullscreen Console Pane -->
             <div id="tab-console" class="tab-content hidden">
                 <div class="card glass console-card-fullscreen">
@@ -280,15 +290,17 @@
                         <!-- Agent content container -->
                         <div class="agent-panes-container" id="agent-panes-container">
                             <!-- Populated dynamically: agent-pane -->
-                            <div class="console-placeholder-msg">Console ready. Select configurations and click Run.</div>
+                            <div class="console-placeholder-msg">Console ready. Select configurations and click Run.
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
         </main>
     </div>
-    
+
     <script src="app.js"></script>
 </body>
+
 </html>

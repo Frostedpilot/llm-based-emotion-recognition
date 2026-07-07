@@ -748,7 +748,9 @@ async def agent_chat(req: AgentChatRequest):
         event_stream(),
         media_type="application/x-ndjson",
         headers={
+            "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Encoding": "identity",
         },
