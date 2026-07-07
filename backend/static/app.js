@@ -35,6 +35,8 @@ const el = {
     tempVal: document.getElementById('temp-val'),
     framesInput: document.getElementById('frames-input'),
     disableThinkingCheck: document.getElementById('disable-thinking-check'),
+    maxTokensInput: document.getElementById('max-tokens-input'),
+    reasoningMaxTokensInput: document.getElementById('reasoning-max-tokens-input'),
     runBtn: document.getElementById('run-btn'),
     
     // Outputs
@@ -444,6 +446,8 @@ async function runProbe() {
     const temp = parseFloat(el.tempSlider.value);
     const disableThinking = el.disableThinkingCheck.checked;
     const frames = parseInt(el.framesInput.value);
+    const maxTokens = el.maxTokensInput ? parseInt(el.maxTokensInput.value) : null;
+    const reasoningMaxTokens = el.reasoningMaxTokensInput ? parseInt(el.reasoningMaxTokensInput.value) : null;
     
     const isAgentic = (modality === 'agentic');
     const isSoft = (labelMode === 'soft');
@@ -469,7 +473,9 @@ async function runProbe() {
                 template_name: 'erc_default',
                 workflow: workflow,
                 vision_frames: frames,
-                soft_label: isSoft
+                soft_label: isSoft,
+                max_tokens: maxTokens,
+                reasoning_max_tokens: reasoningMaxTokens
             };
             
             const resp = await fetch('/agent/chat', {
@@ -496,7 +502,9 @@ async function runProbe() {
                 disable_thinking: disableThinking,
                 include_video: (modality === 'mono_v' || modality === 'mono_tva'),
                 include_audio: (modality === 'mono_a' || modality === 'mono_tva'),
-                vision_frames: frames
+                vision_frames: frames,
+                max_tokens: maxTokens,
+                reasoning_max_tokens: reasoningMaxTokens
             };
             
             const resp = await fetch('/inference', {

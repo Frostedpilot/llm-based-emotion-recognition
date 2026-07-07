@@ -59,6 +59,7 @@ h1, h2, h3, h4 {
 /* ── Sidebar Selection Pane ─────────────────────────────────────────────────── */
 .sidebar {
     width: 320px;
+    flex-shrink: 0;
     background-color: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
     display: flex;
@@ -133,6 +134,8 @@ h1, h2, h3, h4 {
 /* ── Main Content Area ──────────────────────────────────────────────────────── */
 .main-content {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     padding: 24px;

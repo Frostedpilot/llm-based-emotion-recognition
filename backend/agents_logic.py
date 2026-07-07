@@ -43,6 +43,7 @@ async def run_agent_step(
     provider: str,
     bridge: InferenceBridge,
     soft_label: bool = False,
+    max_tokens: int = 40000,
 ) -> AsyncGenerator[str, None]:
     """
     Runs a single agent step by:
@@ -97,15 +98,19 @@ async def run_agent_step(
     try:
         # bridge.chat is likely synchronous/blocking in some implementations,
         # so we run it in an executor to avoid blocking the async loop.
+        step_max_tokens = context.get("max_tokens") or max_tokens
+        step_reasoning_max_tokens = context.get("reasoning_max_tokens") or 10000
+        step_temp = context.get("temperature") if context.get("temperature") is not None else 0.2
         stream = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: bridge.chat(
                 model=model,
                 messages=messages,
-                temperature=0.0,
-                max_tokens=4096,
+                temperature=step_temp,
+                max_tokens=step_max_tokens,
                 stream=True,
                 soft_label=soft_label,
+                reasoning_max_tokens=step_reasoning_max_tokens,
             ),
         )
 

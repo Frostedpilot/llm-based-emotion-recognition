@@ -238,13 +238,22 @@ def agent_history(**kwargs) -> str:
     Formats all previous agent steps into a clean chronological trace.
     Useful for 'Finalizer' agents who need the full picture.
     """
-    # Look for any keys that store model outputs
-    outputs = {k: v for k, v in kwargs.items() if (k.endswith('_output') or k.endswith('_out')) and k != 'last_output'}
+    # Look for any keys that store model outputs, ignoring duplicate acoustic/egemaps outputs
+    outputs = {
+        k: v for k, v in kwargs.items()
+        if (k.endswith('_output') or k.endswith('_out')) 
+        and k != 'last_output'
+        and not any(x in k.lower() for x in ['acoustic', 'egemaps'])
+    }
     
     if not outputs:
         # Fallback: check if they are nestled in a 'ctx' key
         if 'ctx' in kwargs and isinstance(kwargs['ctx'], dict):
-            outputs = {k: v for k, v in kwargs['ctx'].items() if (k.endswith('_output') or k.endswith('_out'))}
+            outputs = {
+                k: v for k, v in kwargs['ctx'].items()
+                if (k.endswith('_output') or k.endswith('_out'))
+                and not any(x in k.lower() for x in ['acoustic', 'egemaps'])
+            }
 
     if not outputs:
         return "(No agent history recorded yet)"
@@ -252,8 +261,9 @@ def agent_history(**kwargs) -> str:
     lines = ["--- AGENT REASONING HISTORY ---"]
     for key, val in outputs.items():
         step_name = key.replace('_output', '').replace('_out', '').upper()
-        # Clean up tags if present
-        clean_val = str(val).replace("<thought>", "").replace("</thought>", "").strip()
+        # Clean up tags and reasoning trace if present
+        import re
+        clean_val = re.sub(r"<thought>.*?</thought>", "", str(val), flags=re.DOTALL).strip()
         lines.append(f"STEP: {step_name}\n{clean_val}\n")
     
     return "\n".join(lines)

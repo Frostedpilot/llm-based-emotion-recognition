@@ -797,7 +797,6 @@ def main():
         import asyncio
         from backend.agents_logic import run_multiagent_stream
 
-        # Context contains references to the dialogue structures
         original_context = {
             "dataset_name": dataset_name,
             "dialogue_id": dialogue["dialogue_id"],
@@ -807,6 +806,8 @@ def main():
             "vision_frames": args.vision_frames,
             "simulated_results": simulated_results, # Pass loaded pre-computed dictionary
             "soft_label": args.soft_label,
+            "max_tokens": args.max_tokens if args.max_tokens is not None else 40000,
+            "reasoning_max_tokens": args.think_budget if args.think_budget is not None else 10000,
         }
 
         thinking_text = ""  # Reasoner output (used in Summary)

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multimodal ERC Results Viewer — Thesis Demo</title>
+    <!-- Outfit and Inter Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="results_style.css">
+    <!-- Chart.js CDN for distribution graphics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- Sidebar: Results file selection and result list -->
+        <aside class="sidebar glass">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">📁</span>
+                    <h2>Results Explorer</h2>
+                </div>
+                <p class="subtitle">Benchmark Runs Viewer</p>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>1. Select Results File</h3>
+                <div class="select-wrapper">
+                    <select id="results-file-select">
+                        <option value="" disabled selected>Loading results...</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="sidebar-section flexible-section">
+                <h3>2. Result Entries</h3>
+                <div class="results-filter">
+                    <div class="search-box">
+                        <input type="text" id="results-search" placeholder="Search Dialogue ID...">
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="correct">✓ Correct</button>
+                        <button class="filter-btn" data-filter="incorrect">✗ Incorrect</button>
+                    </div>
+                    <!-- Hard vs Soft Comparison Filter (shown dynamically when counterpart is loaded) -->
+                    <div class="comparison-filter-section" id="comparison-filter-wrapper" style="display: none; margin-top: 8px;">
+                        <label style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: 600;">Hard vs Soft Filter</label>
+                        <div class="select-wrapper">
+                            <select id="results-comparison-filter">
+                                <option value="all">Show All Entries</option>
+                                <option value="disagree">Soft & Hard Disagree</option>
+                                <option value="soft_correct">Soft Correct, Hard Incorrect</option>
+                                <option value="hard_correct">Hard Correct, Soft Incorrect</option>
+                                <option value="both_correct">Both Correct</option>
+                                <option value="both_incorrect">Both Incorrect</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="results-list-container">
+                    <div id="results-list" class="item-list">
+                        <div class="list-placeholder">Select a results file to see entries</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- Header banner -->
+            <header class="main-header glass">
+                <div class="header-left">
+                    <h1>Thesis Results Viewer Dashboard</h1>
+                    <p id="run-meta-summary">Research on Multimodal Emotion Recognition in Conversation (ERC)</p>
+                </div>
+                <div class="contributions-badges" id="meta-badges">
+                    <!-- Badges injected dynamically based on file metadata -->
+                    <span class="contrib-badge">Results Viewer</span>
+                </div>
+            </header>
+            
+            <!-- Main Grid layout -->
+            <div class="results-grid">
+                
+                <!-- Left Column: Context and Media -->
+                <div class="card glass results-details-card">
+                    <div class="card-header">
+                        <h2>Dialogue Context & Media</h2>
+                        <span class="badge" id="results-source-badge">N/A</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Target Utterance Details -->
+                        <div class="utterance-bubble">
+                            <span class="speaker-label" id="results-utt-speaker">Speaker: -</span>
+                            <blockquote id="results-utt-text">Please select a results file and click an utterance entry.</blockquote>
+                        </div>
+                        
+                        <div class="ground-truth-strip">
+                            <span>Ground Truth:</span>
+                            <span class="emotion-badge-gt" id="results-utt-gt">N/A</span>
+                            <span style="margin-left: 20px;">Model Prediction:</span>
+                            <span class="emotion-badge-pred" id="results-utt-pred">N/A</span>
+                            <span class="verdict-match" id="results-eval-match-indicator">-</span>
+                        </div>
+                        
+                        <div class="media-container" id="results-media-wrapper">
+                            <h3>Associated Media Clip</h3>
+                            <div class="player-container">
+                                <div class="media-placeholder">No media loaded</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Context History -->
+                        <div class="history-section">
+                            <h3>Dialogue History Context</h3>
+                            <div class="results-history-list-container">
+                                <div id="results-history-list" class="history-list">
+                                    <!-- Populated dynamically -->
+                                    <div style="padding: 20px; color: var(--text-muted); text-align: center;">No context history loaded</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Column: Prompts, Predictions, Agent Tabs -->
+                <div class="card glass results-outputs-card">
+                    <div class="card-header">
+                        <h2>Model Prompts & Agent Reasonings</h2>
+                    </div>
+                    <div class="card-body-container">
+                        <!-- Agent Tabs bar -->
+                        <div class="agent-tabs-bar" id="results-agent-tabs-bar">
+                            <button class="agent-tab-btn active" data-agent="final">Final Prediction</button>
+                            <button class="agent-tab-btn" id="tab-btn-compare" data-agent="compare" style="display: none;">📊 Compare Hard/Soft</button>
+                            <!-- Specialist agents dynamically injected -->
+                        </div>
+                        
+                        <!-- Agent content panes -->
+                        <div class="agent-panes-container" id="results-agent-panes-container">
+                            
+                            <!-- Final Prediction Pane -->
+                            <div class="agent-pane" data-agent="final">
+                                <div class="sub-tabs-bar">
+                                    <button class="sub-tab-btn active" data-subtab="response">Model Response (Raw)</button>
+                                    <button class="sub-tab-btn" data-subtab="prompt">Prompt Sent to LLM</button>
+                                </div>
+                                
+                                <div class="sub-tab-content" data-subtab="response">
+                                    <div class="response-box">
+                                        <pre id="results-raw-response">No response loaded</pre>
+                                    </div>
+                                </div>
+                                <div class="sub-tab-content hidden" data-subtab="prompt">
+                                    <div class="response-box">
+                                        <pre id="results-raw-prompt">Select an utterance to load prompt preview</pre>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Hard vs Soft Comparison Pane -->
+                            <div class="agent-pane hidden" data-agent="compare" style="height: 100%; overflow: hidden; display: flex; flex-direction: column;">
+                                <div class="comparison-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; flex-shrink: 0;">
+                                    <div class="comparison-column glass" style="padding: 14px; border: 1px solid var(--border-color); border-radius: 8px; background-color: hsla(224, 30%, 15%, 0.15);">
+                                        <h3 style="font-size:12px; text-transform:uppercase; color:var(--accent-secondary); margin-bottom:10px;">Soft Architecture</h3>
+                                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                            <span>Prediction:</span>
+                                            <span class="emotion-badge-pred" id="compare-soft-pred">N/A</span>
+                                        </div>
+                                        <div style="font-size:12px; margin-bottom:8px;" id="compare-soft-jsd-wrapper">
+                                            <span>JSD to GT:</span> <strong id="compare-soft-jsd">-</strong>
+                                        </div>
+                                    </div>
+                                    <div class="comparison-column glass" style="padding: 14px; border: 1px solid var(--border-color); border-radius: 8px; background-color: hsla(224, 30%, 15%, 0.15);">
+                                        <h3 style="font-size:12px; text-transform:uppercase; color:var(--accent-rose); margin-bottom:10px;">Hard Architecture</h3>
+                                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                            <span>Prediction:</span>
+                                            <span class="emotion-badge-pred" id="compare-hard-pred">N/A</span>
+                                        </div>
+                                        <div style="font-size:12px; margin-bottom:8px;" id="compare-hard-jsd-wrapper">
+                                            <span>JSD to GT:</span> <strong id="compare-hard-jsd">-</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="comparison-chart-section" style="background-color: hsla(224, 45%, 4%, 0.65); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px; flex-shrink: 0;">
+                                    <h3 style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px;">Soft vs Hard Probability Comparison Chart</h3>
+                                    <div style="position: relative; height: 160px; width: 100%;">
+                                        <canvas id="comparison-distribution-chart"></canvas>
+                                    </div>
+                                </div>
+
+                                <div class="comparison-responses-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex-grow: 1; min-height: 150px; overflow: hidden;">
+                                    <div style="display: flex; flex-direction: column; overflow: hidden; height:100%;">
+                                        <span style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; display:block;">Soft Raw Response</span>
+                                        <div class="response-box" style="flex-grow:1; overflow-y:auto; background-color: hsla(224, 45%, 4%, 0.65); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                                            <pre id="compare-soft-raw" style="font-size:12px; white-space: pre-wrap; font-family: var(--font-body); line-height: 1.5; color: var(--text-primary);"></pre>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; overflow: hidden; height:100%;">
+                                        <span style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; display:block;">Hard Raw Response</span>
+                                        <div class="response-box" style="flex-grow:1; overflow-y:auto; background-color: hsla(224, 45%, 4%, 0.65); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                                            <pre id="compare-hard-raw" style="font-size:12px; white-space: pre-wrap; font-family: var(--font-body); line-height: 1.5; color: var(--text-primary);"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Dynamic agent panes will go here -->
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+            
+        </main>
+    </div>
+    
+    <script src="results_app.js"></script>
+</body>
+</html>

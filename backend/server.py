@@ -41,6 +41,25 @@ except ImportError as _e:
     HAS_AGENTS = False
     print(f"[WARN] agents_logic not available: {_e}")
 
+def get_clean_prompt_text(content):
+    """
+    Extracts only the user prompt text block, omitting large base64 binary files
+    and replacing them with visual placeholders to keep logs and previews clean.
+    """
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        texts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    texts.append(item.get("text", ""))
+                elif "video_url" in item or "image_url" in item or "audio_url" in item:
+                    media_type = item.get("type", "media")
+                    texts.append(f"\n[{media_type.upper()} DATA APPENDED]")
+        return "\n".join(texts)
+    return str(content)
+
 app = FastAPI(title="Emotion Detection Research Bench")
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -129,6 +148,8 @@ class InferenceRequest(BaseModel):
     include_video: bool = False
     include_audio: bool = False
     vision_frames: int = 3
+    max_tokens: Optional[int] = None
+    reasoning_max_tokens: Optional[int] = None
 
 
 class PromptUpdate(BaseModel):
@@ -151,6 +172,8 @@ class AgentChatRequest(BaseModel):
     workflow: str = "reasoner_verifier"
     vision_frames: int = 3
     soft_label: bool = False
+    max_tokens: Optional[int] = None
+    reasoning_max_tokens: Optional[int] = None
 
 
 class BenchmarkRequest(BaseModel):
@@ -164,7 +187,7 @@ class BenchmarkRequest(BaseModel):
     window_size: int = 5
     disable_thinking: bool = True
     temperature: float = 0.0
-    max_tokens: int = 8192
+    max_tokens: Optional[int] = None
     include_video: bool = False
     include_audio: bool = False
     vision_frames: int = 3
@@ -349,11 +372,14 @@ async def run_inference(req: InferenceRequest):
     if req.custom_system_prompt:
         messages[0]["content"] = req.custom_system_prompt
 
-    # For Qwen 3.5 models, inject /no_think directive at the start of user message
-    if req.disable_thinking and len(messages) > 1:
-        content = messages[1]["content"]
-        if isinstance(content, str) and not content.startswith("/no_think"):
-            messages[1]["content"] = "/no_think\n" + content
+    # Inject override instruction to system prompt and prefix user message if disable_thinking is active
+    if req.disable_thinking:
+        if len(messages) > 0:
+            messages[0]["content"] += "\n\nIMPORTANT: Thinking is disabled. Do NOT include any 'Thoughts:' or 'Thoughts' reasoning block in your output. Skip the 'Thoughts:' step. Output ONLY the 'Soft Labels:' or final dictionary directly."
+        if len(messages) > 1:
+            content = messages[1]["content"]
+            if isinstance(content, str) and not content.startswith("/no_think"):
+                messages[1]["content"] = "/no_think\n" + content
 
     # Multimodal handling via request or template metadata
     media_reqs = metadata.get("media", [])
@@ -386,7 +412,7 @@ async def run_inference(req: InferenceRequest):
             try:
                 # Yield metadata first (Exact prompt sent to LLM)
                 yield f"<system>{messages[0]['content']}</system>"
-                yield f"<prompt>{messages[1]['content']}</prompt>"
+                yield f"<prompt>{get_clean_prompt_text(messages[1]['content'])}</prompt>"
 
                 # Synchronous generator called in a thread-safe way by StreamingResponse
                 chunk_generator = bridge.chat(
@@ -395,6 +421,8 @@ async def run_inference(req: InferenceRequest):
                     stream=True,
                     include_thinking=not req.disable_thinking,
                     soft_label=req.soft_label,
+                    max_tokens=req.max_tokens,
+                    reasoning_max_tokens=req.reasoning_max_tokens or 10000,
                 )
                 for chunk in chunk_generator:
                     yield chunk
@@ -414,11 +442,16 @@ async def run_inference(req: InferenceRequest):
         )
     else:
         prediction = bridge.chat(
-            model=req.model_id, messages=messages, soft_label=req.soft_label
+            model=req.model_id,
+            messages=messages,
+            soft_label=req.soft_label,
+            include_thinking=not req.disable_thinking,
+            max_tokens=req.max_tokens,
+            reasoning_max_tokens=req.reasoning_max_tokens or 10000,
         )
         return {
             "prediction": prediction,
-            "prompt": messages[1]["content"],
+            "prompt": get_clean_prompt_text(messages[1]["content"]),
             "system": messages[0]["content"],
         }
 
@@ -439,6 +472,145 @@ async def get_result_file(filename: str):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     raise HTTPException(status_code=404, detail="Result file not found.")
+
+
+class RenderPromptRequest(BaseModel):
+    dataset_name: str
+    dialogue_id: str
+    target_index: int
+    template_name: str
+    window_size: int = 5
+    vision_frames: int = 3
+    soft_label: bool = False
+
+
+@app.post("/render_prompt_preview")
+async def render_prompt_preview(req: RenderPromptRequest):
+    data = load_dataset(req.dataset_name)
+    if not data:
+        # Try stripping extension just in case
+        clean_name = req.dataset_name.replace(".json", "")
+        data = load_dataset(clean_name)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"Dataset {req.dataset_name} not found.")
+
+    dialogue = next((d for d in data if d.get("dialogue_id") == req.dialogue_id or d.get("original_dialogue_id") == req.dialogue_id), None)
+    if not dialogue:
+        raise HTTPException(status_code=404, detail=f"Dialogue {req.dialogue_id} not found.")
+
+    utterances = dialogue["utterances"]
+    if req.target_index >= len(utterances):
+        raise HTTPException(status_code=400, detail="Invalid target index.")
+
+    context = {
+        "dataset_name": "MELD" if "meld" in req.dataset_name.lower() else "IEMOCAP",
+        "utterances": utterances,
+        "target_index": req.target_index,
+        "window_size": req.window_size,
+        "vision_frames": req.vision_frames,
+    }
+
+    template = req.template_name or "erc_default"
+    try:
+        messages, metadata = prompt_registry.render(template, **context)
+    except Exception:
+        messages, metadata = prompt_registry.render("erc_default", **context)
+
+    if req.soft_label:
+        messages[-1]["content"] += "\n\nPlease provide a probability distribution over the emotions."
+
+    return {
+        "system": messages[0]["content"],
+        "prompt": get_clean_prompt_text(messages[1]["content"]) if len(messages) > 1 else "",
+        "messages": messages
+    }
+
+
+@app.get("/results/gather_agents")
+async def gather_agents(
+    dataset_file: str,
+    model: str,
+    dialogue_id: str,
+    utterance_id: str,
+    current_filename: str
+):
+    results_dir = BASE_DIR / "results"
+    if not results_dir.exists():
+        return {}
+
+    gathered = {}
+    
+    def normalize_model(m):
+        return m.lower().replace(":", "_").replace("/", "-")
+        
+    target_model_norm = normalize_model(model)
+    target_ds_norm = dataset_file.lower().replace(".json", "")
+
+    for filename in os.listdir(results_dir):
+        if not filename.endswith(".json") or filename == current_filename:
+            continue
+            
+        file_path = results_dir / filename
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            meta = data.get("meta", {})
+            meta_model = meta.get("model", "")
+            meta_ds = meta.get("dataset_file", "")
+            
+            if not meta_model or not meta_ds:
+                continue
+                
+            if normalize_model(meta_model) != target_model_norm:
+                continue
+            if meta_ds.lower().replace(".json", "") != target_ds_norm:
+                continue
+                
+            # Check meta to determine agent_mode
+            agent_mode = meta.get("agent_mode", "single")
+            if agent_mode == "multi":
+                continue # Skip multi-agent files (we only gather single-agent inputs)
+
+            template_path = meta.get("template_path", "").lower()
+            agent_name = None
+            
+            if "resolver" in template_path or "resolver" in filename.lower():
+                continue # Skip resolver agent files
+            elif "multimodal" in template_path or "multimodal" in filename.lower():
+                agent_name = "MultimodalFusion"
+            elif "vision" in template_path or "image" in template_path or "vision" in filename.lower():
+                agent_name = "VisionAgent"
+            elif "audio" in template_path or "egemaps" in template_path or "audio" in filename.lower() or "egemaps" in filename.lower():
+                agent_name = "AcousticAgent"
+            elif "cot" in template_path or "text" in template_path or "default" in template_path or "text" in filename.lower() or "cot" in filename.lower():
+                agent_name = "TextAgent"
+                
+            if not agent_name:
+                continue
+                
+            for res in data.get("results", []):
+                res_d_id = res.get("dialogue_id")
+                res_u_id = res.get("utterance_id")
+                
+                if res_d_id == dialogue_id and str(res_u_id) == str(utterance_id):
+                    # Find model prediction
+                    prediction_text = res.get("prediction_raw", res.get("prediction", ""))
+                    
+                    gathered[agent_name] = {
+                        "prediction": res.get("prediction", ""),
+                        "prediction_raw": prediction_text,
+                        "prediction_soft": res.get("prediction_soft", {}),
+                        "filename": filename,
+                        "template": meta.get("template_path", "")
+                    }
+                    break
+        except Exception as e:
+            # Skip invalid files silently
+            pass
+            
+    return gathered
+
 
 
 # --- Prompt Lab Endpoints ---
@@ -552,6 +724,8 @@ async def agent_chat(req: AgentChatRequest):
         "window_size": req.window_size,
         "vision_frames": req.vision_frames,
         "soft_label": req.soft_label,
+        "max_tokens": req.max_tokens,
+        "reasoning_max_tokens": req.reasoning_max_tokens,
     }
     template = req.template_name or "erc_default"
     try:
@@ -674,6 +848,7 @@ async def run_benchmark(req: BenchmarkRequest):
                     "utterances": utterances,
                     "target_index": utt_idx,
                     "window_size": req.window_size,
+                    "max_tokens": req.max_tokens,
                 }
                 template = req.template_name
                 try:
