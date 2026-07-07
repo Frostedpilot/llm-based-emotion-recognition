@@ -536,6 +536,13 @@ def main():
         help="Max generation tokens incl. thinking (default: 65536)",
     )
     parser.add_argument(
+        "--think-budget",
+        metavar="N",
+        type=int,
+        default=None,
+        help="Max tokens allowed for the thinking block (Ollama only, or reasoning_max_tokens for OpenRouter)",
+    )
+    parser.add_argument(
         "--temperature",
         metavar="F",
         type=float,
@@ -996,6 +1003,7 @@ def main():
             stream=True,
             include_thinking=include_thinking,
             soft_label=args.soft_label,
+            reasoning_max_tokens=args.think_budget if args.think_budget is not None else 10000,
         )
         return collect_full_response(stream)
 
@@ -1017,6 +1025,8 @@ def main():
             "vision_frames": args.vision_frames,
             "simulated_results": simulated_results, # Pass loaded pre-computed dictionary
             "soft_label": args.soft_label,
+            "max_tokens": args.max_tokens if args.max_tokens is not None else 40000,
+            "reasoning_max_tokens": args.think_budget if args.think_budget is not None else 10000,
         }
 
         final_label = ""
