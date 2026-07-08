@@ -298,33 +298,34 @@ function renderMediaPlayer(utterance, isMeld) {
         return;
     }
 
-    if (isMeld) {
-        // MELD has native MP4 video clips
-        if (videoPath) {
-            const videoUrl = '/' + videoPath;
-            playerWrapper.innerHTML = `
-                <video src="${videoUrl}" controls preload="metadata" playsinline>
+    if (videoPath) {
+        let videoUrl = '/' + videoPath;
+        if (!isMeld && videoPath.endsWith('.avi') && audioPath) {
+            videoUrl = '/' + audioPath.replace('.wav', '.mp4');
+        }
+        const audioUrl = audioPath ? '/' + audioPath : null;
+
+        playerWrapper.innerHTML = `
+            <div class="multimodal-media-container" style="display: flex; flex-direction: column; gap: 10px;">
+                <video src="${videoUrl}" controls preload="metadata" playsinline style="width: 100%; border-radius: 8px;">
                     Your browser does not support HTML5 video playing.
                 </video>
-            `;
-        } else {
-            playerWrapper.innerHTML = '<div class="media-placeholder">Video path missing</div>';
-        }
-    } else {
-        // IEMOCAP has WAV audio sentences and AVI video dialogues
-        // Since browsers don't play AVI natively, we offer the WAV audio player, which is excellent.
-        if (audioPath) {
-            const audioUrl = '/' + audioPath;
-            playerWrapper.innerHTML = `
-                <div class="video-fallback-msg">
-                    <p>Playing acoustic audio segment (WAV waveform):</p>
-                    <audio src="${audioUrl}" controls preload="metadata"></audio>
-                    <p class="subtitle" style="margin-top: 10px;">Note: Video dialogue resides in <code>.avi</code> format which is not supported natively by browsers.</p>
-                </div>
-            `;
-        } else {
-            playerWrapper.innerHTML = '<div class="media-placeholder">Acoustic WAV path missing</div>';
-        }
+                ${(audioUrl && !isMeld) ? `
+                    <div class="audio-segment-box" style="background: rgba(148, 163, 184, 0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.1);">
+                        <p style="font-size: 11px; color: #94a3b8; margin: 0 0 6px 0;">Sentence Audio Segment (WAV):</p>
+                        <audio src="${audioUrl}" controls preload="metadata" style="width: 100%; height: 32px;"></audio>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    } else if (audioPath) {
+        const audioUrl = '/' + audioPath;
+        playerWrapper.innerHTML = `
+            <div class="video-fallback-msg">
+                <p>Playing acoustic audio segment (WAV waveform):</p>
+                <audio src="${audioUrl}" controls preload="metadata"></audio>
+            </div>
+        `;
     }
 }
 

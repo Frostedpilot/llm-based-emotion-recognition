@@ -8,7 +8,7 @@ import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Generator
 import uvicorn
@@ -130,6 +130,60 @@ app.mount(
     StaticFiles(directory=str(BASE_DIR / "data" / "raw" / "IEMOCAP_full_release")),
     name="iemocap",
 )
+
+
+# --- Video Transcoding Endpoint for AVI files (e.g. IEMOCAP) ---
+@app.get("/video/transcode")
+async def transcode_video(path: str):
+    """
+    On-the-fly transcoder that converts unsupported AVI files to MP4.
+    Caches the results to avoid duplicate conversions.
+    """
+    # path is like "IEMOCAP_full_release/Session1/dialog/avi/DivX/Ses01F_impro01.avi"
+    raw_path = BASE_DIR / "data" / "raw" / path
+    if not raw_path.exists():
+        raise HTTPException(status_code=404, detail="Source video not found.")
+
+    # Create cached directory
+    cache_dir = BASE_DIR / "data" / "processed" / "transcoded_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Output file path
+    out_filename = raw_path.with_suffix(".mp4").name
+    out_path = cache_dir / out_filename
+
+    # If cache doesn't exist, transcode it using async subprocess
+    if not out_path.exists():
+        cmd = [
+            "ffmpeg",
+            "-i", str(raw_path),
+            "-c:v", "libx264",
+            "-preset", "superfast",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-y",
+            str(out_path)
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Transcoding failed: {stderr.decode()}"
+                )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error executing ffmpeg: {str(e)}"
+            )
+
+    return FileResponse(out_path)
 
 
 # --- Models ---

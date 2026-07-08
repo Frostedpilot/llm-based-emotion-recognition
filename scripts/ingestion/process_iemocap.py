@@ -20,6 +20,8 @@ def parse_iemocap_evaluation(eval_path):
                 start, end, turn_id, hard_emo, v, a, d = match.groups()
                 current_turn = turn_id
                 labels[current_turn] = {
+                    "start_time": float(start),
+                    "end_time": float(end),
                     "hard_emotion": hard_emo.lower(),
                     "soft_labels_list": [],
                     "v_a_d": [float(v), float(a), float(d)]
@@ -116,7 +118,9 @@ def process_iemocap(root_dir, output_json_path):
                         "audio_path": rel_audio_path,
                         "video_path": rel_video_path,
                         "soft_labels": e_info["soft_labels"],
-                        "v_a_d": e_info["v_a_d"]
+                        "v_a_d": e_info["v_a_d"],
+                        "start_time": e_info["start_time"],
+                        "end_time": e_info["end_time"]
                     }
                     utterances.append(utterance)
             
